@@ -21,4 +21,10 @@ const dist = join(root, 'dist');
 mkdirSync(dist, { recursive: true });
 writeFileSync(join(dist, 'index.html'), html);
 writeFileSync(join(dist, 'instagram-etkilesim.js'), script);
-console.log('dist/index.html ve dist/instagram-etkilesim.js oluşturuldu.');
+
+// Teşhis aracı: Instagram'ın kendi isteklerini kaydeden ayrı sayfa.
+const recorder = readFileSync(join(root, 'src', 'ag-kaydedici.js'), 'utf8');
+const recorderPage = readFileSync(join(root, 'public', 'kaydedici.html'), 'utf8');
+writeFileSync(join(dist, 'kaydedici.html'), recorderPage.split('__SCRIPT__').join(escapeHtml(recorder)));
+writeFileSync(join(dist, 'ag-kaydedici.js'), recorder);
+console.log('dist/index.html, dist/kaydedici.html ve script dosyaları oluşturuldu.');
