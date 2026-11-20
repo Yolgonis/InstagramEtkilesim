@@ -1,5 +1,5 @@
 /*!
- * Instagram Etkileşim Analizi, v1.1
+ * Instagram Etkileşim Analizi, v1.2
  * Seni takip eden ama gönderilerini beğenmeyen, yorum yapmayan ve
  * hikâyelerini izlemeyen kişileri listeler.
  *
@@ -65,12 +65,17 @@
   let running = false;
   let reqCount = 0;
 
+  // Tek bir zamanlayıcıyla bekler (arka plan sekmelerindeki zamanlayıcı kısıtlamasından daha az etkilenir).
+  // "Durdur"a basılınca beklemeden hemen çıkar.
+  let wakeUp = null;
   async function wait(ms) {
-    const end = Date.now() + ms;
-    while (Date.now() < end) {
-      if (stopped) throw new StopError('Durduruldu.');
-      await sleep(Math.min(250, end - Date.now()));
-    }
+    if (stopped) throw new StopError('Durduruldu.');
+    await new Promise((resolve) => {
+      const t = setTimeout(resolve, ms);
+      wakeUp = () => { clearTimeout(t); resolve(); };
+    });
+    wakeUp = null;
+    if (stopped) throw new StopError('Durduruldu.');
   }
 
   const idOf = (u) => String(u.pk_id || u.pk || u.id || '');
@@ -104,37 +109,45 @@
     try { data = JSON.parse(text); } catch (e) { /* JSON değil */ }
 
     const msg = (data && data.message) || '';
-    if (res.status === 429 || (data && (data.spam || data.feedback_required)) ||
-        /wait a few minutes|try again later|birkaç dakika|daha sonra tekrar/i.test(msg)) {
-      throw new StopError('Instagram geçici bir sınır koydu. Birkaç saat bekleyip tekrar dene. Toplanan veriler kaydedildi.');
+    // Hata mesajlarına teşhis için uç nokta, HTTP kodu ve Instagram'ın mesajı eklenir.
+    const detail = ' [' + path.split('?')[0] + ' · HTTP ' + res.status + (msg ? ' · "' + String(msg).slice(0, 120) + '"' : '') + ']';
+    const fail = (E, text) => { const e = new E(text + detail); e.status = res.status; e.igMessage = msg; return e; };
+
+    if (res.status === 429 || (data && (data.spam === true || data.feedback_required === true)) ||
+        /wait a few minutes|birkaç dakika bekle/i.test(msg)) {
+      throw fail(StopError, 'Instagram geçici bir sınır koydu. Birkaç saat bekleyip tekrar dene. Toplanan veriler kaydedildi.');
     }
     if (msg === 'checkpoint_required' || msg === 'challenge_required') {
-      throw new StopError('Instagram güvenlik doğrulaması istedi. Instagram\'ı normal şekilde açıp doğrulamayı tamamla, bir gün bekle.');
+      throw fail(StopError, 'Instagram güvenlik doğrulaması istedi. Instagram\'ı normal şekilde açıp doğrulamayı tamamla, bir gün bekle.');
     }
     if (res.status === 401 || msg === 'login_required') {
-      throw new StopError('Oturum bulunamadı. Instagram\'a tekrar giriş yap.');
+      throw fail(StopError, 'Oturum bulunamadı. Instagram\'a tekrar giriş yap.');
     }
     if (!res.ok || !data) {
-      throw new Error('İstek başarısız (' + res.status + '): ' + path.split('?')[0]);
+      throw fail(Error, 'İstek başarısız.');
     }
     return data;
   }
 
   // ---------- Veri toplama ----------
+  // Profil bilgisi yalnızca gösterim içindir; alınamazsa analiz yine de devam eder.
   async function fetchMe() {
     try {
-      const d = await api('users/' + USER_ID + '/info/');
-      if (d.user) {
-        store.me = {
-          username: d.user.username,
-          followers: d.user.follower_count,
-          media: d.user.media_count,
-        };
-        save();
-      }
+      const f = await api('accounts/edit/web_form_data/');
+      const username = f && f.form_data && f.form_data.username;
+      if (!username) throw new Error('kullanıcı adı yok');
+      const p = await api('users/web_profile_info/?username=' + encodeURIComponent(username));
+      const u = (p && p.data && p.data.user) || {};
+      store.me = {
+        username: username,
+        followers: u.edge_followed_by ? u.edge_followed_by.count : null,
+        media: u.edge_owner_to_timeline_media ? u.edge_owner_to_timeline_media.count : null,
+      };
+      save();
     } catch (e) {
-      if (e instanceof StopError) throw e;
-      log('⚠ Profil bilgisi alınamadı, devam ediliyor.');
+      if (e instanceof StopError && e.status === 429) throw e; // gerçek sınır: dur
+      if (e instanceof StopError && e.message.indexOf('Durduruldu') === 0) throw e;
+      log('⚠ Profil bilgisi alınamadı, devam ediliyor. ' + e.message);
     }
   }
 
@@ -235,7 +248,10 @@
 
     try {
       await fetchMe();
-      if (store.me) log('Hesap: @' + store.me.username + ' (' + store.me.followers + ' takipçi, ' + store.me.media + ' gönderi)');
+      if (store.me) {
+        log('Hesap: @' + store.me.username +
+          (store.me.followers != null ? ' (' + store.me.followers + ' takipçi, ' + store.me.media + ' gönderi)' : ''));
+      }
 
       log('Takipçi listesi alınıyor…');
       const followers = await fetchFollowers();
@@ -420,7 +436,7 @@
   const cb = () => h('input', { type: 'checkbox', checked: true, style: { marginRight: '4px' } });
   ui.cbLikes = cb(); ui.cbComments = cb(); ui.cbStories = cb();
   ui.startBtn = btn('Başlat', run, true);
-  ui.stopBtn = btn('Durdur', () => { stopped = true; setStatus('Durduruluyor…'); });
+  ui.stopBtn = btn('Durdur', () => { stopped = true; if (wakeUp) wakeUp(); setStatus('Durduruluyor…'); });
   ui.stopBtn.disabled = true;
   ui.summary = h('div', { style: { fontSize: '13px', margin: '8px 0', lineHeight: '1.5' } });
   ui.filter = h('select', { onchange: () => renderList(), style: { padding: '4px', borderRadius: '6px', border: '1px solid @border' } },
@@ -495,6 +511,7 @@
   function close() {
     if (running && !confirm('Analiz devam ediyor. Durdurup kapatılsın mı?')) return;
     stopped = true;
+    if (wakeUp) wakeUp();
     themeObserver.disconnect();
     if (mq && mq.removeEventListener) mq.removeEventListener('change', applyTheme);
     ui.panel.remove();
