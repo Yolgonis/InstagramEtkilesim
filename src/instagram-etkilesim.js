@@ -1,5 +1,5 @@
 /*!
- * Instagram Etkileşim Analizi, v0.5.2
+ * Instagram Etkileşim Analizi, v0.5.3
  * Seni takip eden ama gönderilerini beğenmeyen, yorum yapmayan ve
  * hikâyelerini izlemeyen kişileri listeler.
  *
