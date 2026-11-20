@@ -2,7 +2,7 @@
 
 ![Lisans: MIT](https://img.shields.io/badge/lisans-MIT-blue)
 
-Takipçilerinden **kimlerin seninle etkileşimde olduğunu** gösteren küçük bir araç: kimler gönderilerini beğeniyor, yorum yapıyor, hikâyelerini izliyor. Liste tarama sırasında canlı dolar. Son 7/30/90 günde kaç kişiyle etkileşimde olduğunu özetler. İstersen en az etkileşimdeki kişileri takipçilerinden çıkarmanı sağlar. Tarayıcıda çalışır, kurulum ya da indirme gerektirmez.
+Takipçilerinden **kimlerin seninle etkileşimde olduğunu** gösteren küçük bir araç: kimler gönderilerini beğeniyor, yorum yapıyor, hikâyelerini izliyor, seninle mesajlaşıyor. Liste tarama sırasında canlı dolar. Son 7/30/90 günde kaç kişiyle etkileşimde olduğunu özetler. İstersen en az etkileşimdeki kişileri takipçilerinden çıkarmanı sağlar. Tarayıcıda çalışır, kurulum ya da indirme gerektirmez.
 
 **👉 Kullanmak için: https://Yolgonis.github.io/InstagramEtkilesim/**
 
@@ -17,7 +17,7 @@ Takipçilerinden **kimlerin seninle etkileşimde olduğunu** gösteren küçük 
 3. instagram.com sekmesine dön ve konsolu aç: `F12` → **Console**. (Kısayol: Windows'ta `Ctrl+Shift+J`, Mac'te `Cmd+Option+J`.)
 4. Kodu yapıştır ve `Enter`'a bas.
    - Chrome yapıştırmaya izin vermezse konsola `allow pasting` (Türkçe Chrome'da `yapıştırmaya izin ver`) yaz, Enter'a bas ve tekrar yapıştır.
-5. Sağda açılan panelde **Başlat**'a bas. 1000 takipçili bir hesapta analiz yaklaşık 3–5 dakika sürer.
+5. Instagram'ın üstünde tam ekran açılan araçta **Taramayı başlat**'a bas. İşin bitince sağ üstteki **×** ile Instagram'a dön. 1000 takipçili bir hesapta analiz yaklaşık 3–5 dakika sürer.
 
 Telefonda çalışmaz, çünkü mobil tarayıcılarda konsol yok.
 
@@ -26,7 +26,8 @@ Telefonda çalışmaz, çünkü mobil tarayıcılarda konsol yok.
 - Takipçi listeni çeker.
 - Son *N* gönderinin (varsayılan 15) **beğenenlerini** ve **yorum yapanlarını** çeker.
 - O an yayında olan **hikâyelerin izleyenlerini** çeker ve kaydeder. Instagram izleyen listesini yalnızca kısa bir süre gösterdiği için veriler her çalıştırmada birikir.
-- Her takipçi için ❤ beğeni, 💬 yorum ve 👁 hikâye sayısını gösterir. **Etkileşime girenler** listesi tarama sırasında canlı güncellenir.
+- **Mesaj kutusunu** inceler: birebir sohbetin olan kişiler ✉ ile etkileşimde sayılır. Yalnızca kiminle ve en son ne zaman mesajlaştığın kullanılır. Mesaj içerikleri okunmaz, grup sohbetleri sayılmaz.
+- Her takipçi için ❤ beğeni, 💬 yorum, 👁 hikâye ve ✉ mesaj bilgisini, profil fotoğrafıyla birlikte kartlarda gösterir. **Etkileşime girenler** listesi tarama sırasında canlı güncellenir.
 - **Dönem özeti:** "Son 30 günde 214 takipçin seninle etkileşime girdi (%21)" gibi. Seçenekler: son 7, 30, 90 gün veya tüm veri.
 - "Hiç etkileşim yok", "en fazla 1" gibi filtreler, arama, kullanıcı adlarını kopyalama ve CSV dışa aktarma sunar.
 - **Sekmeler:** *Takipçilerim*, *Takip etmediklerim* (seni takip eden ama senin takip etmediklerin) ve *Beni takip etmeyenler* (takip ettiğin ama seni takip etmeyenler). Onaylı hesaplar mavi tikle gösterilir.

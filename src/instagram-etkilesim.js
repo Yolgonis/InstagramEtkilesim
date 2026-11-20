@@ -1,5 +1,5 @@
 /*!
- * Instagram Etkileşim Analizi, v0.4.2
+ * Instagram Etkileşim Analizi, v0.5.0
  * Seni takip eden ama gönderilerini beğenmeyen, yorum yapmayan ve
  * hikâyelerini izlemeyen kişileri listeler.
  *
@@ -13,7 +13,7 @@
 (async () => {
   'use strict';
 
-  const VERSION = '0.4.2';
+  const VERSION = '0.5.0';
   const CONFIG = {
     DELAY_MIN_MS: 2000,     // istekler arası en az bekleme
     DELAY_MAX_MS: 4500,     // istekler arası en fazla bekleme
@@ -23,6 +23,7 @@
     REFRESH_POST_DAYS: 14,  // bundan yeni gönderilerin verisi her çalıştırmada yenilenir
     MAX_COMMENT_PAGES: 10,
     MAX_VIEWER_PAGES: 20,
+    MAX_DM_PAGES: 25,       // mesaj kutusunda en fazla 25 × 20 = 500 sohbet
     APP_ID: '936619743392459',
   };
 
@@ -107,7 +108,9 @@
   }
 
   const idOf = (u) => String(u.pk_id || u.pk || u.id || '');
-  const slim = (u) => ({ id: idOf(u), u: u.username || '', n: u.full_name || '', v: u.is_verified ? 1 : 0 });
+  const slim = (u) => ({
+    id: idOf(u), u: u.username || '', n: u.full_name || '', v: u.is_verified ? 1 : 0, p: u.profile_pic_url || '',
+  });
   const mediaPk = (it) => String(it.pk || String(it.id || '').split('_')[0]);
 
   // post: true ise POST isteği atar (takipçi çıkarma gibi işlemler). İşlemlerin kendi bekleme düzeni
@@ -263,6 +266,30 @@
     return [...ids];
   }
 
+  // Mesaj kutusundaki birebir sohbetler: kişi kimliği -> son mesajlaşma zamanı (ms).
+  // Grup sohbetleri sayılmaz. Mesaj içerikleri okunmaz ve kaydedilmez.
+  async function fetchDirectThreads() {
+    const out = {};
+    let cursor = null;
+    let pages = 0;
+    do {
+      const d = await api('direct_v2/inbox/?persistentBadging=true&folder=&limit=20&thread_message_limit=1' +
+        (cursor ? '&cursor=' + encodeURIComponent(cursor) : ''));
+      const inbox = d.inbox || {};
+      (inbox.threads || []).forEach((th) => {
+        const users = th.users || [];
+        if (th.is_group || users.length !== 1) return;
+        const id = idOf(users[0]);
+        const t = Math.round(Number(th.last_activity_at || 0) / 1000); // mikrosaniye -> ms
+        if (id && (!out[id] || out[id] < t)) out[id] = t;
+      });
+      cursor = inbox.has_older ? inbox.oldest_cursor : null;
+      pages++;
+      setStatus('Mesajlar inceleniyor: ' + Object.keys(out).length + ' kişi');
+    } while (cursor && pages < CONFIG.MAX_DM_PAGES);
+    return out;
+  }
+
   // Senin takip ettiğin kişiler ("takip ediyorsun" etiketi, "Beni takip etmeyenler" sekmesi ve takibi bırakma için).
   async function fetchFollowing() {
     const out = new Map();
@@ -388,6 +415,7 @@
       likes: ui.cbLikes.checked,
       comments: ui.cbComments.checked,
       stories: ui.cbStories.checked,
+      dms: ui.cbDms.checked,
     };
     store.lastOpts = opts;
     log('— Analiz başladı —');
@@ -416,6 +444,19 @@
       } catch (e) {
         if (e instanceof StopError) throw e;
         log('⚠ Takip ettiklerin alınamadı, devam ediliyor. ' + e.message);
+      }
+
+      if (opts.dms) {
+        log('Mesaj kutusu inceleniyor (yalnızca kiminle mesajlaştığın, içerik okunmaz)…');
+        try {
+          store.dms = await fetchDirectThreads();
+          save();
+          log('✓ ' + Object.keys(store.dms).length + ' kişiyle birebir sohbetin var.');
+          liveRender();
+        } catch (e) {
+          if (e instanceof StopError) throw e;
+          log('⚠ Mesajlar alınamadı, devam ediliyor. ' + e.message);
+        }
       }
 
       if (opts.likes || opts.comments) {
@@ -514,10 +555,13 @@
     }
     const stories = Object.values(store.stories).filter((s) => !since || s.t >= since);
     if (o.stories) stories.forEach((s) => (s.viewers || []).forEach((id) => inc(S, id)));
+    // Mesajlaşma: seçilen dönemde son mesajlaşması olan kişi 1 sayılır.
+    const dms = o.dms !== false ? (store.dms || {}) : {};
     const mk = (f, idx, isFollower) => {
       const l = L.get(f.id) || 0, c = C.get(f.id) || 0, s = S.get(f.id) || 0;
+      const m = dms[f.id] && (!since || dms[f.id] >= since) ? 1 : 0;
       return {
-        id: f.id, u: f.u, n: f.n, v: !!f.v, idx: idx, l: l, c: c, s: s, total: l + c + s,
+        id: f.id, u: f.u, n: f.n, v: !!f.v, p: f.p || '', idx: idx, l: l, c: c, s: s, m: m, total: l + c + s + m,
         fol: following.has(f.id), isFollower: isFollower,
       };
     };
@@ -537,6 +581,7 @@
         likes: active.filter((x) => x.l).length,
         comments: active.filter((x) => x.c).length,
         stories: active.filter((x) => x.s).length,
+        dms: active.filter((x) => x.m).length,
       },
     };
   }
@@ -630,14 +675,14 @@
     borderRadius: '6px', padding: '6px', maxHeight: '110px', overflowY: 'auto', whiteSpace: 'pre-wrap',
   } });
   ui.postCount = h('input', { type: 'number', min: 1, max: 200, value: CONFIG.DEFAULT_POSTS, style: {
-    width: '60px', padding: '4px', border: '1px solid @border', borderRadius: '6px',
+    width: '60px', padding: '4px', margin: '0 6px', border: '1px solid @border', borderRadius: '6px',
   } });
   const cb = () => h('input', { type: 'checkbox', checked: true, style: { marginRight: '4px' } });
-  ui.cbLikes = cb(); ui.cbComments = cb(); ui.cbStories = cb();
+  ui.cbLikes = cb(); ui.cbComments = cb(); ui.cbStories = cb(); ui.cbDms = cb();
   ui.startBtn = btn('Başlat', run, true);
   ui.stopBtn = btn('Durdur', () => { stopped = true; if (wakeUp) wakeUp(); setStatus('Durduruluyor…'); });
   ui.stopBtn.disabled = true;
-  const selStyle = { padding: '4px', borderRadius: '6px', border: '1px solid @border' };
+  const selStyle = { padding: '7px 8px', width: '100%', borderRadius: '8px', border: '1px solid @border', fontSize: '13px' };
   ui.period = h('select', { onchange: () => renderResults(), style: selStyle },
     h('option', { value: '7' }, 'Son 7 gün'),
     h('option', { value: '30' }, 'Son 30 gün'),
@@ -645,8 +690,8 @@
     h('option', { value: '0' }, 'Tüm veri'));
   ui.period.value = '0';
   ui.summary = h('div', { style: {
-    fontSize: '13px', margin: '8px 0', lineHeight: '1.55', background: '@sunken', border: '1px solid @line',
-    borderRadius: '8px', padding: '8px 10px',
+    fontSize: '14px', margin: '0 0 8px', lineHeight: '1.6', background: '@sunken', border: '1px solid @line',
+    borderRadius: '12px', padding: '14px 16px',
   } });
   ui.filter = h('select', { onchange: () => renderList(), style: selStyle },
     h('option', { value: 'active' }, 'Etkileşime girenler (çoktan aza)'),
@@ -655,8 +700,8 @@
     h('option', { value: '2' }, 'En fazla 2 etkileşim'),
     h('option', { value: 'all' }, 'Herkes'));
   ui.hideDone = h('input', { type: 'checkbox', checked: true, onchange: () => renderList(), style: { marginRight: '4px' } });
-  ui.search = h('input', { type: 'search', placeholder: 'Ara…', oninput: () => renderList(), style: {
-    flex: '1', minWidth: '80px', padding: '4px 6px', border: '1px solid @border', borderRadius: '6px',
+  ui.search = h('input', { type: 'search', placeholder: 'Kullanıcı adı veya isim ara…', oninput: () => renderList(), style: {
+    flex: '0 1 360px', minWidth: '120px', padding: '8px 12px', border: '1px solid @border', borderRadius: '8px', fontSize: '13px',
   } });
   ui.cbUnfollow = h('input', { type: 'checkbox', checked: false, style: { marginRight: '4px' } });
   ui.removeBtn = h('button', { onclick: removeSelected, style: {
@@ -664,8 +709,9 @@
     border: '1px solid @danger', background: '@danger', color: '#ffffff',
   } }, 'Seçilenleri çıkar');
   ui.selInfo = h('span', { style: { fontSize: '12px', color: '@muted' } });
-  ui.list = h('div', { style: { borderTop: '1px solid @line', marginTop: '6px' } });
-  const row = (...kids) => h('div', { style: { display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center', margin: '6px 0' } }, ...kids);
+  ui.list = h('div', { style: {
+    display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(270px, 1fr))', gap: '8px', alignItems: 'start',
+  } });
 
   // Liste sekmeleri
   const VIEWS = {
@@ -676,148 +722,115 @@
   ui.tabs = {};
   for (const key of Object.keys(VIEWS)) {
     ui.tabs[key] = h('button', { onclick: () => setView(key), style: {
-      padding: '6px 10px', borderRadius: '999px', cursor: 'pointer', fontSize: '12px', fontWeight: '600',
+      display: 'block', width: '100%', textAlign: 'left', margin: '0 0 6px',
+      padding: '9px 12px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600',
       border: '1px solid @border', background: '@btnBg', color: '@text',
     } }, VIEWS[key].label);
   }
-  ui.viewHint = h('div', { style: { fontSize: '11px', color: '@faint', margin: '2px 0 4px' } });
+  ui.viewHint = h('div', { style: { fontSize: '12px', color: '@faint', margin: '4px 0 0', lineHeight: '1.45' } });
   ui.unfollowLabel = h('label', { style: { fontSize: '12px', display: 'block' } }, ui.cbUnfollow, 'Takip ettiklerimi takipten de çıkar');
   ui.actionNote = h('div', { style: { fontSize: '11px', color: '@faint', marginTop: '4px', lineHeight: '1.4' } });
   ui.hideDoneLabel = h('span', null, 'Çıkarılanları gizle');
 
+  // ---------- Tam ekran yerleşim: üst çubuk, sol menü, ana liste, alt durum çubuğu ----------
+  const section = (title, ...kids) => h('div', { style: { padding: '14px 16px', borderBottom: '1px solid @line' } },
+    h('div', { style: {
+      fontSize: '11px', fontWeight: '700', letterSpacing: '.06em', textTransform: 'uppercase', color: '@faint', marginBottom: '8px',
+    } }, title), ...kids);
+  const blockLabel = (...kids) => h('label', { style: {
+    fontSize: '13px', display: 'flex', alignItems: 'center', margin: '6px 0', cursor: 'pointer',
+  } }, ...kids);
+
+  ui.bigStart = btn('Taramayı başlat', run, true);
+  Object.assign(ui.bigStart.style, { padding: '12px 28px', fontSize: '15px' });
+  ui.emptyState = h('div', { style: { margin: '70px auto', maxWidth: '540px', textAlign: 'center', lineHeight: '1.6' } },
+    h('div', { style: { fontSize: '24px', fontWeight: '700', marginBottom: '8px' } }, 'Kimler seninle etkileşimde?'),
+    h('div', { style: { fontSize: '14px', color: '@muted', marginBottom: '20px' } },
+      'Taramayı başlat. Takipçilerin, gönderilerini beğenenler, yorum yapanlar ve hikâyelerini izleyenler taranır. ',
+      'Etkileşime girenler tarama sırasında burada canlı listelenir.'),
+    ui.bigStart);
+
   ui.resultsBox = h('div', { style: { display: 'none' } },
-    row(h('span', { style: { fontSize: '13px' } }, 'Dönem:'), ui.period),
     ui.summary,
-    row(ui.tabs.followers, ui.tabs.notFollowedBack, ui.tabs.nonFollowers),
-    ui.viewHint,
-    row(ui.filter, ui.search),
-    row(btn('Görünenleri seç', selectVisible), btn('Seçimi kaldır', () => { selected.clear(); renderList(); }), ui.selInfo),
-    h('div', { style: { border: '1px solid @line', borderRadius: '8px', padding: '8px 10px', margin: '6px 0' } },
-      row(ui.removeBtn), ui.unfollowLabel, ui.actionNote),
-    h('label', { style: { fontSize: '12px', display: 'block', margin: '6px 0' } }, ui.hideDone, ui.hideDoneLabel),
-    row(btn('Listeyi kopyala', copyList), btn('CSV indir', downloadCsv)),
+    h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', margin: '12px 0 6px' } },
+      btn('Görünenleri seç', selectVisible),
+      btn('Seçimi kaldır', () => { selected.clear(); renderList(); }),
+      ui.selInfo,
+      h('div', { style: { flex: '1' } }),
+      ui.removeBtn),
+    h('div', { style: { margin: '0 0 12px' } }, ui.unfollowLabel, ui.actionNote),
     ui.list);
 
-  ui.body = h('div', { style: { padding: '12px 14px', overflowY: 'auto', maxHeight: 'calc(90vh - 48px)' } },
-    h('div', { style: { fontSize: '12px', color: '@muted', marginBottom: '8px', lineHeight: '1.45' } },
-      'Analiz yalnızca okur. Takipçi çıkarma sadece sen seçip onaylarsan yapılır. Veriler sadece bu tarayıcıda kalır. ',
-      'İşlem sürerken sekmeyi kapatma.'),
-    h('div', { style: { fontSize: '13px', display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' } },
-      h('label', null, 'Son ', ui.postCount, ' gönderi')),
-    h('div', { style: { fontSize: '13px', display: 'flex', flexWrap: 'wrap', gap: '12px', margin: '8px 0' } },
-      h('label', null, ui.cbLikes, 'Beğeniler'),
-      h('label', null, ui.cbComments, 'Yorumlar'),
-      h('label', null, ui.cbStories, 'Hikâye izleyenleri')),
-    h('div', { style: { display: 'flex', gap: '6px' } }, ui.startBtn, ui.stopBtn),
-    ui.status, ui.log, ui.resultsBox,
-    h('div', { style: { marginTop: '14px', paddingTop: '8px', borderTop: '1px solid @line' } },
-      h('a', { href: '#', onclick: (e) => { e.preventDefault(); resetData(); }, style: { fontSize: '11px', color: '@danger' } },
-        'Kayıtlı tüm verileri sil')));
-
-  // ---------- Panel: taşınabilir (başlıktan sürükle) ve boyutlandırılabilir (sağ alt köşeden çek) ----------
-  const LAYOUT_KEY = 'igEtkilesim_layout';
-  const MARGIN = 8;
-  let layout = null;
-  try { layout = JSON.parse(localStorage.getItem(LAYOUT_KEY)); } catch (e) { layout = null; }
-  const saveLayout = () => {
-    if (minimized) return;
-    const r = ui.panel.getBoundingClientRect();
-    // Yükseklik yalnızca kullanıcı köşeden çekip sabitlediyse kaydedilir; yoksa panel içeriğe göre uzar.
-    const fixedH = /px$/.test(ui.panel.style.height);
-    try {
-      localStorage.setItem(LAYOUT_KEY, JSON.stringify({
-        left: Math.round(r.left), top: Math.round(r.top), width: Math.round(r.width),
-        height: fixedH ? Math.round(r.height) : null,
-      }));
-    } catch (e) { /* yok say */ }
-  };
-  // Paneli ekranın içinde tut.
-  function clampPanel() {
-    const r = ui.panel.getBoundingClientRect();
-    const left = clamp(r.left, MARGIN, Math.max(MARGIN, window.innerWidth - r.width - MARGIN));
-    const top = clamp(r.top, MARGIN, Math.max(MARGIN, window.innerHeight - 48));
-    ui.panel.style.left = left + 'px';
-    ui.panel.style.top = top + 'px';
-  }
-
-  let minimized = false;
-  let heightBeforeMin = '';
-  ui.minBtn = h('button', { title: 'Küçült', onclick: () => {
-    minimized = !minimized;
-    if (minimized) { heightBeforeMin = ui.panel.style.height; ui.panel.style.height = 'auto'; }
-    else ui.panel.style.height = heightBeforeMin;
-    ui.panel.style.resize = minimized ? 'none' : 'both';
-    ui.body.style.display = minimized ? 'none' : 'block';
-    ui.minBtn.textContent = minimized ? '▢' : '–';
-    ui.minBtn.title = minimized ? 'Büyüt' : 'Küçült';
-  }, style: { background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: '@text' } }, '–');
-
-  ui.header = h('div', { title: 'Taşımak için sürükle', style: {
-    display: 'flex', alignItems: 'center', justifyContent: 'space-between', flex: '0 0 auto',
-    padding: '10px 14px', borderBottom: '1px solid @line', height: '28px', cursor: 'move', userSelect: 'none',
+  ui.sidebar = h('div', { style: {
+    flex: '0 0 270px', borderRight: '1px solid @line', overflowY: 'auto', background: '@sunken',
   } },
-    h('div', null,
-      h('strong', { style: { fontSize: '14px' } }, 'Etkileşim Analizi'),
-      h('span', { style: { fontSize: '11px', color: '@faint', marginLeft: '6px' } }, 'v' + VERSION)),
-    h('div', null, ui.minBtn,
-      h('button', { title: 'Kapat', onclick: close, style: {
-        background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: '@text',
-      } }, '×')));
+    section('Liste', ui.tabs.followers, ui.tabs.notFollowedBack, ui.tabs.nonFollowers, ui.viewHint),
+    section('Göster', ui.filter, blockLabel(ui.hideDone, ui.hideDoneLabel)),
+    section('Dönem', ui.period),
+    section('Tarama ayarları',
+      blockLabel('Son ', ui.postCount, ' gönderi'),
+      blockLabel(ui.cbLikes, 'Beğeniler'),
+      blockLabel(ui.cbComments, 'Yorumlar'),
+      blockLabel(ui.cbStories, 'Hikâye izleyenleri'),
+      blockLabel(ui.cbDms, 'Mesajlaştıklarım')),
+    section('Dışa aktar', h('div', { style: { display: 'flex', gap: '6px', flexWrap: 'wrap' } },
+      btn('Listeyi kopyala', copyList), btn('CSV indir', downloadCsv))),
+    h('div', { style: { padding: '14px 16px', fontSize: '12px', color: '@muted', lineHeight: '1.5' } },
+      'Tarama yalnızca okur. Çıkarma sadece sen seçip onaylarsan yapılır. Veriler sadece bu tarayıcıda kalır. ',
+      'İşlem sürerken sekmeyi kapatma.',
+      h('div', { style: { marginTop: '10px' } },
+        h('a', { href: '#', onclick: (e) => { e.preventDefault(); resetData(); }, style: { fontSize: '12px', color: '@danger' } },
+          'Kayıtlı tüm verileri sil'))));
 
-  const startW = (layout && layout.width) || 400;
+  ui.main = h('div', { style: { flex: '1 1 auto', overflowY: 'auto', padding: '18px 22px', minWidth: '0' } },
+    ui.emptyState, ui.resultsBox);
+
+  ui.closeBtn = h('button', { title: 'Kapat ve Instagram\'a dön', onclick: close, style: {
+    background: 'none', border: 'none', fontSize: '24px', lineHeight: '1', cursor: 'pointer', color: '@text', padding: '0 4px',
+  } }, '×');
+  ui.header = h('div', { style: {
+    flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 18px',
+    borderBottom: '1px solid @line', background: '@card',
+  } },
+    h('div', { style: { display: 'flex', alignItems: 'baseline', gap: '6px', marginRight: '10px', whiteSpace: 'nowrap' } },
+      h('strong', { style: { fontSize: '16px' } }, 'Etkileşim Analizi'),
+      h('span', { style: { fontSize: '11px', color: '@faint' } }, 'v' + VERSION)),
+    ui.search,
+    h('div', { style: { flex: '1' } }),
+    ui.startBtn, ui.stopBtn, ui.closeBtn);
+
+  ui.logToggle = h('button', { onclick: () => showLog(ui.log.style.display === 'none'), style: {
+    background: 'none', border: 'none', color: '@link', cursor: 'pointer', fontSize: '12px', padding: '0',
+  } }, 'Günlüğü göster');
+  function showLog(on) {
+    ui.log.style.display = on ? 'block' : 'none';
+    setText(ui.logToggle, on ? 'Günlüğü gizle' : 'Günlüğü göster');
+    if (on) ui.log.scrollTop = ui.log.scrollHeight;
+  }
+  Object.assign(ui.log.style, { display: 'none', maxHeight: '160px', marginTop: '8px' });
+  Object.assign(ui.status.style, { margin: '0', fontSize: '13px' });
+  ui.footer = h('div', { style: { flex: '0 0 auto', borderTop: '1px solid @line', padding: '8px 18px', background: '@card' } },
+    h('div', { style: { display: 'flex', alignItems: 'center', gap: '12px' } }, ui.status, h('div', { style: { flex: '1' } }), ui.logToggle),
+    ui.log);
+
   ui.panel = h('div', { style: {
-    position: 'fixed',
-    left: ((layout && layout.left) != null ? layout.left : window.innerWidth - startW - 16) + 'px',
-    top: ((layout && layout.top) != null ? layout.top : 16) + 'px',
-    width: startW + 'px',
-    height: layout && layout.height ? layout.height + 'px' : 'auto',
-    minWidth: '300px', minHeight: '120px',
-    maxWidth: 'calc(100vw - ' + 2 * MARGIN + 'px)', maxHeight: 'calc(100vh - ' + 2 * MARGIN + 'px)',
-    display: 'flex', flexDirection: 'column', overflow: 'hidden', resize: 'both',
-    background: '@card', color: '@text', border: '1px solid @border', borderRadius: '12px',
-    boxShadow: '0 8px 30px @shadow', zIndex: '2147483647', colorScheme: T.scheme,
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif',
-  } }, ui.header, ui.body);
-  // Gövde kalan alanı doldurur ve kendi içinde kayar.
-  Object.assign(ui.body.style, { flex: '1 1 auto', minHeight: '0', maxHeight: 'none' });
+    position: 'fixed', top: '0', left: '0', right: '0', bottom: '0', zIndex: '2147483647',
+    display: 'flex', flexDirection: 'column', background: '@card', color: '@text', colorScheme: T.scheme,
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif', fontSize: '14px',
+  } },
+    ui.header,
+    h('div', { style: { flex: '1 1 auto', display: 'flex', minHeight: '0' } }, ui.sidebar, ui.main),
+    ui.footer);
   document.body.append(ui.panel);
-  clampPanel();
 
-  // Sürükleyerek taşıma
-  let drag = null;
-  ui.header.addEventListener('pointerdown', (e) => {
-    if (e.button !== 0 || e.target.closest('button')) return;
-    const r = ui.panel.getBoundingClientRect();
-    drag = { dx: e.clientX - r.left, dy: e.clientY - r.top };
-    ui.header.setPointerCapture(e.pointerId);
-    e.preventDefault();
-  });
-  ui.header.addEventListener('pointermove', (e) => {
-    if (!drag) return;
-    ui.panel.style.left = (e.clientX - drag.dx) + 'px';
-    ui.panel.style.top = (e.clientY - drag.dy) + 'px';
-    clampPanel();
-  });
-  const endDrag = () => { if (drag) { drag = null; saveLayout(); } };
-  ui.header.addEventListener('pointerup', endDrag);
-  ui.header.addEventListener('pointercancel', endDrag);
-  // Başlığa çift tıklayınca varsayılan konum ve boyuta dön
-  ui.header.addEventListener('dblclick', (e) => {
-    if (e.target.closest('button')) return;
-    try { localStorage.removeItem(LAYOUT_KEY); } catch (err) { /* yok say */ }
-    Object.assign(ui.panel.style, { width: '400px', height: 'auto', top: '16px', left: (window.innerWidth - 416) + 'px' });
-    clampPanel();
-  });
-  // Boyut değişince kaydet (sağ alt köşeden çekince)
-  let resizeTimer = null;
-  const resizeObserver = window.ResizeObserver ? new ResizeObserver(() => {
-    clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(saveLayout, 300);
-  }) : null;
-  if (resizeObserver) resizeObserver.observe(ui.panel);
-  window.addEventListener('resize', clampPanel);
+  // Arkadaki Instagram sayfası kaymasın.
+  const prevOverflow = [document.documentElement.style.overflow, document.body.style.overflow];
+  document.documentElement.style.overflow = 'hidden';
+  document.body.style.overflow = 'hidden';
+  // Eski sürümlerin (yüzen panel) kayıtlı konum bilgisi artık kullanılmıyor.
+  try { localStorage.removeItem('igEtkilesim_layout'); } catch (e) { /* yok say */ }
 
-  // Tema değişirse (sistem ayarı ya da Instagram'ın kendi tema düğmesi) panel de değişsin.
+  // Tema değişirse (sistem ayarı ya da Instagram'ın kendi tema düğmesi) ekran da değişsin.
   if (mq) {
     if (mq.addEventListener) mq.addEventListener('change', applyTheme);
     else if (mq.addListener) mq.addListener(applyTheme);
@@ -831,13 +844,9 @@
     isOpen: () => ui.panel.isConnected,
     busy: () => running,
     destroy: () => teardown(),
-    focus: () => {
-      ui.panel.style.display = 'flex';
-      ui.panel.style.outline = '3px solid #0095f6';
-      setTimeout(() => { ui.panel.style.outline = ''; }, 1200);
-    },
+    focus: () => { ui.panel.style.display = 'flex'; },
   };
-  console.info('[Etkileşim Analizi] v' + VERSION + ' açıldı. Panel sayfanın sağında.');
+  console.info('[Etkileşim Analizi] v' + VERSION + ' açıldı. Kapatmak için sağ üstteki × düğmesine bas.');
 
   function close() {
     if (running && !confirm('İşlem devam ediyor. Durdurup kapatılsın mı?')) return;
@@ -847,20 +856,23 @@
     stopped = true;
     if (wakeUp) wakeUp();
     themeObserver.disconnect();
-    if (resizeObserver) resizeObserver.disconnect();
-    window.removeEventListener('resize', clampPanel);
     if (mq && mq.removeEventListener) mq.removeEventListener('change', applyTheme);
     ui.panel.remove();
+    document.documentElement.style.overflow = prevOverflow[0];
+    document.body.style.overflow = prevOverflow[1];
     delete window.__igEtk;
   }
   function log(line) {
     const t = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     ui.log.append(t + '  ' + line + '\n');
     ui.log.scrollTop = ui.log.scrollHeight;
+    if (/^[✖■]/.test(line)) showLog(true); // durma ve hatalarda günlüğü aç
   }
   function setStatus(s) { ui.status.textContent = s; }
   function setRunningUI(on) {
     ui.startBtn.disabled = on;
+    ui.bigStart.disabled = on;
+    ui.bigStart.style.opacity = on ? '.5' : '1';
     ui.stopBtn.disabled = !on;
     ui.removeBtn.disabled = on;
     ui.startBtn.style.opacity = on ? '.5' : '1';
@@ -914,7 +926,12 @@
   function setText(el, text) { if (el.textContent !== text) el.textContent = text; }
 
   function renderResults() {
-    if (!store.followers || !store.followers.length) { ui.resultsBox.style.display = 'none'; return; }
+    if (!store.followers || !store.followers.length) {
+      ui.resultsBox.style.display = 'none';
+      ui.emptyState.style.display = 'block';
+      return;
+    }
+    ui.emptyState.style.display = 'none';
     const days = Number(ui.period.value);
     const r = compute(days);
     lastRows = r.rows;
@@ -922,15 +939,15 @@
     const current = r.rows.filter((x) => !store.done[x.id]);
     const zero = current.filter((x) => x.total === 0).length;
     const one = current.filter((x) => x.total === 1).length;
-    const label = (running ? 'Tarama sürüyor · ' : '') + (days ? 'Son ' + days + ' günde' : 'Taranan gönderi ve hikâyelerde');
+    const label = (running ? 'Tarama sürüyor · ' : '') + (days ? 'Son ' + days + ' günde' : 'Taranan verilerde');
     ui.summary.textContent = '';
     ui.summary.append(
-      h('div', { style: { fontSize: '14px' } }, label + ' ',
-        h('b', { style: { fontSize: '16px' } }, r.active), ' takipçin seninle etkileşime girdi (',
+      h('div', { style: { fontSize: '15px' } }, label + ' ',
+        h('b', { style: { fontSize: '20px' } }, r.active), ' takipçin seninle etkileşime girdi (',
         h('b', null, pct(r.active, current.length)), ').'),
       h('div', { style: { color: '@muted' } },
         '❤ ' + r.byType.likes + ' kişi beğendi  ·  💬 ' + r.byType.comments + ' kişi yorum yaptı  ·  👁 ' +
-        r.byType.stories + ' kişi hikâye izledi'),
+        r.byType.stories + ' kişi hikâye izledi  ·  ✉ ' + r.byType.dms + ' kişiyle mesajlaştın'),
       h('div', null, 'Toplam takipçi: ', h('b', null, current.length),
         '  ·  Hiç etkileşim yok: ', h('b', { style: { color: '@danger' } }, zero),
         '  ·  Sadece 1: ', h('b', null, one)),
@@ -1003,18 +1020,20 @@
     updateTabs();
     updateSelInfo();
     if (!rows.length) {
-      ui.list.append(h('div', { style: { fontSize: '13px', color: '@faint', padding: '10px 0' } }, 'Bu filtrede kimse yok.'));
+      ui.list.append(h('div', { style: { fontSize: '13px', color: '@faint', padding: '10px 0', gridColumn: '1 / -1' } }, 'Bu filtrede kimse yok.'));
       return;
     }
-    ui.list.append(h('div', { style: { fontSize: '11px', color: '@faint', padding: '6px 0' } },
-      rows.length + ' kişi  ·  ❤ beğeni  💬 yorum  👁 hikâye  ·  kutu = seç'));
+    ui.list.append(h('div', { style: { fontSize: '12px', color: '@faint', padding: '2px 0', gridColumn: '1 / -1' } },
+      rows.length + ' kişi  ·  ❤ beğeni  💬 yorum  👁 hikâye  ✉ mesaj  ·  seçmek için karta tıkla'));
     const newest = Math.max(10, Math.round(lastRows.length * 0.03)); // en yeni ~%3
     for (const x of rows) {
       const done = isDone(x);
       const doneText = x.isFollower ? 'çıkarıldı' : 'takipten çıkarıldı';
-      const check = h('input', { type: 'checkbox', checked: !done && selected.has(x.id), disabled: done,
+      const isSel = () => selected.has(x.id);
+      const check = h('input', { type: 'checkbox', checked: !done && isSel(), disabled: done,
         title: done ? doneText : 'Seç', onchange: (e) => {
           if (e.target.checked) selected.add(x.id); else selected.delete(x.id);
+          paintSel();
           updateSelInfo();
         } });
       const link = h('a', {
@@ -1022,11 +1041,13 @@
         style: { color: '@link', fontWeight: '600', textDecoration: done ? 'line-through' : 'none' },
       }, '@' + x.u);
       const item = h('div', { style: {
-        display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 0', borderBottom: '1px solid @line',
-        fontSize: '13px', opacity: done ? '.45' : '1',
+        display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', border: '1px solid @line',
+        borderRadius: '10px', background: '@card', fontSize: '13px', opacity: done ? '.45' : '1',
+        cursor: done ? 'default' : 'pointer', userSelect: 'none',
       } },
         check,
-        h('div', { style: { flex: '1', minWidth: '0', overflow: 'hidden' } },
+        avatarEl(x),
+        h('div', { style: { flex: '1', minWidth: '0', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' } },
           link,
           x.v ? verifiedTick() : null,
           done ? badge(doneText, '@line', '@muted') : null,
@@ -1034,9 +1055,34 @@
           !done && x.isFollower && x.idx < newest ? badge('yeni', '@badgeBg', '@badgeFg') : null,
           x.n ? h('div', { style: { fontSize: '11px', color: '@faint', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' } }, x.n) : null),
         h('div', { style: { fontSize: '12px', color: '@muted', whiteSpace: 'nowrap' } },
-          '❤' + x.l + ' 💬' + x.c + ' 👁' + x.s));
+          '❤' + x.l + ' 💬' + x.c + ' 👁' + x.s + (x.m ? ' ✉' : '')));
+      // Seçili kart mavi çerçeveyle gösterilir; kartın herhangi bir yerine tıklamak seçer.
+      function paintSel() {
+        item.style.borderColor = fill(!done && isSel() ? '@accent' : '@line');
+        item.style.boxShadow = !done && isSel() ? '0 0 0 1px ' + fill('@accent') : 'none';
+      }
+      paintSel();
+      item.addEventListener('click', (e) => {
+        if (done || e.target === check || e.target.closest('a')) return;
+        check.checked = !check.checked;
+        check.dispatchEvent(new Event('change'));
+      });
       ui.list.append(item);
     }
+  }
+
+  // Profil fotoğrafı; yoksa ya da yüklenemezse baş harf.
+  function avatarEl(x) {
+    const initial = () => h('div', { style: {
+      width: '40px', height: '40px', borderRadius: '50%', flex: '0 0 auto', display: 'flex', alignItems: 'center',
+      justifyContent: 'center', background: '@line', color: '@muted', fontWeight: '700', fontSize: '15px',
+    } }, (x.u[0] || '?').toUpperCase());
+    if (!x.p) return initial();
+    const img = h('img', { src: x.p, alt: '', loading: 'lazy', style: {
+      width: '40px', height: '40px', borderRadius: '50%', flex: '0 0 auto', objectFit: 'cover', background: '@line',
+    } });
+    img.addEventListener('error', () => img.replaceWith(initial()), { once: true });
+    return img;
   }
 
   async function copyList() {
@@ -1051,9 +1097,9 @@
 
   function downloadCsv() {
     const q = (v) => '"' + String(v).replace(/"/g, '""') + '"';
-    const lines = [['kullanici_adi', 'isim', 'begeni', 'yorum', 'hikaye_izleme', 'toplam', 'onayli', 'seni_takip_ediyor', 'takip_ediyorsun', 'islem_yapildi', 'profil'].join(',')];
+    const lines = [['kullanici_adi', 'isim', 'begeni', 'yorum', 'hikaye_izleme', 'mesaj', 'toplam', 'onayli', 'seni_takip_ediyor', 'takip_ediyorsun', 'islem_yapildi', 'profil'].join(',')];
     for (const x of filteredRows()) {
-      lines.push([q(x.u), q(x.n), x.l, x.c, x.s, x.total, x.v ? 'evet' : '', x.isFollower ? 'evet' : '', x.fol ? 'evet' : '', isDone(x) ? 'evet' : '', q('https://www.instagram.com/' + x.u + '/')].join(','));
+      lines.push([q(x.u), q(x.n), x.l, x.c, x.s, x.m, x.total, x.v ? 'evet' : '', x.isFollower ? 'evet' : '', x.fol ? 'evet' : '', isDone(x) ? 'evet' : '', q('https://www.instagram.com/' + x.u + '/')].join(','));
     }
     const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
     const a = h('a', { href: URL.createObjectURL(blob), download: 'takipci-etkilesim.csv' });

@@ -1,5 +1,12 @@
 # Değişiklikler
 
+## 0.5.0 (2026-11-20)
+
+- **Tam ekran arayüz:** Yüzen panelin yerine Instagram'ın üstünü kaplayan bir ekran geldi. Üstte arama ve Başlat/Durdur, solda sekmeler, filtre, dönem ve tarama ayarları, ortada özet ve kişi kartları, altta durum çubuğu ve açılır günlük var. × düğmesi Instagram'a geri döner.
+- **Mesajlar etkileşime eklendi (✉):** Mesaj kutusunda birebir sohbetin olan takipçiler etkileşimde sayılır. Dönem filtresi son mesajlaşma tarihine göre çalışır. Grup sohbetleri sayılmaz, mesaj içerikleri okunmaz. "Mesajlaştıklarım" kutusuyla kapatılabilir.
+- Kişi kartlarında profil fotoğrafı (yeni taramadan sonra) görünür. Kartın herhangi bir yerine tıklayınca kişi seçilir, seçili kartlar mavi çerçeveli görünür.
+- CSV'ye "mesaj" sütunu eklendi.
+
 ## 0.4.2 (2026-11-20)
 
 - Düzeltme: v0.4.0'dan beri kod yapıştırılınca Instagram sekmesi donuyordu. Tema güncellemesi sekme yazılarını her seferinde yeniden yazıyor, Instagram'ın sayfa izleyicisi de buna tepki verip temayı tekrar tetikliyordu. Bu sonsuz döngüye yol açıyordu. Artık tema yalnızca gerçekten değişince güncelleniyor, aynı metin tekrar yazılmıyor.
