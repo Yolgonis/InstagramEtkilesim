@@ -48,10 +48,8 @@ Telefonda çalışmaz, çünkü mobil tarayıcılarda konsol yok.
 
 - **Hikâye izleyenleri** yalnızca hikâye yayındayken alınabilir. Hikâye attıktan sonraki **24 saat içinde** taramayı çalıştır. Veriler birikir, 2–3 hafta sonra liste çok daha güvenilir olur.
 - **Hesabında hiç gönderi yoksa ve yayında hikâye yoksa** herkes 0 etkileşimle görünür. Bu, kimsenin etkileşime girmediği anlamına gelmez, sadece ölçülecek bir şey olmadığı anlamına gelir. Bu durumda kimseyi çıkarma.
-- Günlükte görebileceğin iki uyarı normaldir:
-  - `Gönderiler alınamadı … HTTP 404`: hesapta gönderi olmadığında Instagram böyle cevap verir.
-  - `Hikâyeler alınamadı … HTTP 500`: yayında hikâye olmadığında Instagram böyle cevap verir.
-  Gönderin ya da yayında hikâyen olduğu halde bu uyarıları görüyorsan lütfen [bir hata kaydı aç](https://github.com/Yolgonis/InstagramEtkilesim/issues).
+- Günlükte `Hikâyeler alınamadı … HTTP 500` uyarısı normaldir: yayında hikâye olmadığında Instagram böyle cevap verir.
+- Günlükte `✖ Gönderiler alınamadı` görürsen beğeni ve yorumlar o taramada sayılmamıştır, sonuçlara güvenme. Gönderin ya da yayında hikâyen olduğu halde bu uyarıları görüyorsan lütfen [bir hata kaydı aç](https://github.com/Yolgonis/InstagramEtkilesim/issues).
 - **"yeni"** etiketli kişiler seni yakın zamanda takip etmiş olabilir, henüz etkileşime girme fırsatları olmamış olabilir.
 - Takipçi sayın Instagram'da gösterilenden bir iki kişi az çıkabilir. Hesabını dondurmuş ya da kısıtlanmış kişiler listede yer almaz.
 - *Beni takip etmeyenler* sekmesindeki kişiler seni takip etmediği için etkileşim sayıları bu sekmede anlamlı değildir.

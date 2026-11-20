@@ -1,5 +1,11 @@
 # Değişiklikler
 
+## 0.5.3 (2026-11-21)
+
+- Gönderiler önce profil bilgisinden alınıyor. Bu adres gönderi sayısını da verdiği için hesapta gönderi yoksa gönderi akışına hiç istek atılmıyor ve günlükte "Hesapta gönderi yok" yazıyor.
+- Profil bilgisi yalnızca son 12 gönderiyi veriyor. Daha fazlası istenirse eski akış adresleri deneniyor, onlar çalışmazsa eldeki 12 gönderiyle devam ediliyor.
+- Hiçbir adresten gönderi alınamazsa günlük kırmızı uyarıyla (✖) açılıyor ve beğeni ile yorumların sayılmadığı açıkça yazıyor.
+
 ## 0.5.2 (2026-11-20)
 
 - Mesajlar etkileşimden çıkarıldı. Instagram mesaj listesini web üzerinden artık vermiyor: www.instagram.com HTTP 404 dönüyor, i.instagram.com'a giden isteği de tarayıcı engelliyor. Önceki taramadan kalan mesaj verisi kayıttan silinir.

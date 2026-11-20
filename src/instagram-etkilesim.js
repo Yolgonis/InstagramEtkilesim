@@ -13,7 +13,7 @@
 (async () => {
   'use strict';
 
-  const VERSION = '0.5.2';
+  const VERSION = '0.5.3';
   const CONFIG = {
     DELAY_MIN_MS: 2000,     // istekler arası en az bekleme
     DELAY_MAX_MS: 4500,     // istekler arası en fazla bekleme
@@ -198,8 +198,46 @@
     return out;
   }
 
-  // Gönderi listesi için iki adres denenir: önce kullanıcı adıyla (web sitesinin kullandığı), sonra kimlikle.
+  // Profil bilgisi: toplam gönderi sayısı ve son 12 gönderi. Alınamazsa null.
+  async function fetchProfilePosts() {
+    if (!store.me || !store.me.username) return null;
+    try {
+      const d = await api('users/web_profile_info/?username=' + encodeURIComponent(store.me.username));
+      const m = d && d.data && d.data.user && d.data.user.edge_owner_to_timeline_media;
+      if (!m) return null;
+      const items = (m.edges || []).map((e) => e.node).filter((n) => n && n.id).map((n) => ({
+        pk: String(n.id).split('_')[0],
+        code: n.shortcode || '',
+        taken_at: n.taken_at_timestamp || 0,
+        comment_count: n.edge_media_to_comment ? n.edge_media_to_comment.count : 1,
+      }));
+      return { count: typeof m.count === 'number' ? m.count : null, items: items };
+    } catch (e) {
+      if (e instanceof StopError) throw e;
+      log('⚠ Profil bilgisi alınamadı: ' + e.message);
+      return null;
+    }
+  }
+
+  // Gönderiler: önce profil bilgisi (gönderi sayısı + son 12), daha fazlası gerekirse
+  // kullanıcı adıyla ve kimlikle akış adresleri denenir.
   async function fetchPosts(limit) {
+    const prof = await fetchProfilePosts();
+    if (prof && prof.count === 0) return [];
+    if (prof && prof.items.length && (prof.items.length >= limit || prof.items.length >= prof.count)) {
+      return prof.items.slice(0, limit);
+    }
+    try {
+      const more = await fetchFeedPosts(limit);
+      if (more.length || !prof || !prof.items.length) return more;
+    } catch (e) {
+      if (e instanceof StopError || !prof || !prof.items.length) throw e;
+      log('⚠ ' + prof.items.length + ' gönderiden fazlası alınamadı: ' + e.message);
+    }
+    return prof.items.slice(0, limit);
+  }
+
+  async function fetchFeedPosts(limit) {
     const items = [];
     let maxId = null;
     const routes = [];
@@ -429,8 +467,7 @@
           log(posts.length ? '✓ ' + posts.length + ' gönderi bulundu.' : 'Hesapta gönderi yok. Sadece hikâyeler incelenecek.');
         } catch (e) {
           if (e instanceof StopError) throw e;
-          // Gönderisi olmayan hesaplarda Instagram bu adres için 404 dönebiliyor.
-          log('⚠ Gönderiler alınamadı (hesapta gönderi olmayabilir). Hikâyelere geçiliyor. ' + e.message);
+          log('✖ Gönderiler alınamadı. Hesapta gönderi varsa beğeni ve yorumlar bu taramada sayılmadı, sonuçlara güvenme. ' + e.message);
         }
         store.lastPostIds = [];
         for (let i = 0; i < posts.length; i++) {
