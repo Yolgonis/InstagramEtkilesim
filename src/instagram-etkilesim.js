@@ -1,5 +1,5 @@
 /*!
- * Instagram Etkileşim Analizi, v0.5.0
+ * Instagram Etkileşim Analizi, v0.5.1
  * Seni takip eden ama gönderilerini beğenmeyen, yorum yapmayan ve
  * hikâyelerini izlemeyen kişileri listeler.
  *
@@ -13,7 +13,7 @@
 (async () => {
   'use strict';
 
-  const VERSION = '0.5.0';
+  const VERSION = '0.5.1';
   const CONFIG = {
     DELAY_MIN_MS: 2000,     // istekler arası en az bekleme
     DELAY_MAX_MS: 4500,     // istekler arası en fazla bekleme
@@ -115,7 +115,7 @@
 
   // post: true ise POST isteği atar (takipçi çıkarma gibi işlemler). İşlemlerin kendi bekleme düzeni
   // olduğu için okuma isteklerinin bekleme/mola sayacına karışmazlar.
-  async function api(path, post) {
+  async function api(path, post, base) {
     if (stopped) throw new StopError('Durduruldu.');
     if (!post) {
       reqCount++;
@@ -134,13 +134,15 @@
         'X-Requested-With': 'XMLHttpRequest',
       };
       if (post) headers['Content-Type'] = 'application/x-www-form-urlencoded';
-      res = await fetch('https://www.instagram.com/api/v1/' + path, {
+      res = await fetch((base || 'https://www.instagram.com') + '/api/v1/' + path, {
         method: post ? 'POST' : 'GET',
         credentials: 'include',
         headers: headers,
         body: post ? '' : undefined,
       });
     } catch (e) {
+      // Yedek adreste (i.instagram.com) ağ/CORS hatası tüm analizi durdurmasın.
+      if (base) throw new Error('Ağ hatası [' + base + '/api/v1/' + path.split('?')[0] + ']: ' + e.message);
       throw new StopError('Ağ hatası: ' + e.message);
     }
     const text = await res.text();
@@ -272,9 +274,20 @@
     const out = {};
     let cursor = null;
     let pages = 0;
-    do {
-      const d = await api('direct_v2/inbox/?persistentBadging=true&folder=&limit=20&thread_message_limit=1' +
-        (cursor ? '&cursor=' + encodeURIComponent(cursor) : ''));
+    // Önce www.instagram.com, o adres yoksa (HTTP 404) Instagram web'in de kullandığı i.instagram.com denenir.
+    const bases = ['https://www.instagram.com', 'https://i.instagram.com'];
+    let b = 0;
+    for (;;) {
+      const path = 'direct_v2/inbox/?persistentBadging=true&folder=&limit=20&thread_message_limit=1' +
+        (cursor ? '&cursor=' + encodeURIComponent(cursor) : '');
+      let d;
+      try {
+        d = await api(path, false, bases[b]);
+      } catch (e) {
+        if (e instanceof StopError || pages > 0 || b >= bases.length - 1) throw e;
+        b++;
+        continue;
+      }
       const inbox = d.inbox || {};
       (inbox.threads || []).forEach((th) => {
         const users = th.users || [];
@@ -286,7 +299,8 @@
       cursor = inbox.has_older ? inbox.oldest_cursor : null;
       pages++;
       setStatus('Mesajlar inceleniyor: ' + Object.keys(out).length + ' kişi');
-    } while (cursor && pages < CONFIG.MAX_DM_PAGES);
+      if (!cursor || pages >= CONFIG.MAX_DM_PAGES) break;
+    }
     return out;
   }
 
@@ -455,7 +469,7 @@
           liveRender();
         } catch (e) {
           if (e instanceof StopError) throw e;
-          log('⚠ Mesajlar alınamadı, devam ediliyor. ' + e.message);
+          log('⚠ Mesaj listesi alınamadı, mesajlar bu taramada sayılmadı. Instagram bu bilgiyi web tarayıcısına vermiyor olabilir. ' + e.message);
         }
       }
 
@@ -497,7 +511,14 @@
 
       if (opts.stories) {
         log('Aktif hikâyeler kontrol ediliyor…');
-        const items = await fetchActiveStories();
+        let items = [];
+        try {
+          items = await fetchActiveStories();
+        } catch (e) {
+          if (e instanceof StopError) throw e;
+          // Yayında hikâye yokken Instagram bazen HTTP 500 dönüyor; analizi durdurmaya gerek yok.
+          log('⚠ Hikâyeler alınamadı (yayında hikâye olmayabilir). ' + e.message);
+        }
         if (!items.length) {
           log('Şu an yayında hikâye yok. (İzleyenler yalnızca hikâye yayındayken alınabilir.)');
         }

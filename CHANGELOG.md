@@ -1,5 +1,10 @@
 # Değişiklikler
 
+## 0.5.1 (2026-11-20)
+
+- Düzeltme: Yayında hikâye yokken Instagram HTTP 500 döndüğünde analiz duruyordu. Artık uyarı verip bitiriyor.
+- Mesaj listesi www.instagram.com'da bulunamazsa (HTTP 404) i.instagram.com adresi deneniyor. İkisi de olmazsa mesajlar o taramada sayılmıyor, analiz devam ediyor.
+
 ## 0.5.0 (2026-11-20)
 
 - **Tam ekran arayüz:** Yüzen panelin yerine Instagram'ın üstünü kaplayan bir ekran geldi. Üstte arama ve Başlat/Durdur, solda sekmeler, filtre, dönem ve tarama ayarları, ortada özet ve kişi kartları, altta durum çubuğu ve açılır günlük var. × düğmesi Instagram'a geri döner.
