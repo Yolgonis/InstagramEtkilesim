@@ -1,5 +1,5 @@
 /*!
- * Instagram Etkileşim Analizi, v1.0
+ * Instagram Etkileşim Analizi, v1.1
  * Seni takip eden ama gönderilerini beğenmeyen, yorum yapmayan ve
  * hikâyelerini izlemeyen kişileri listeler.
  *
@@ -331,11 +331,67 @@
     return { rows: rows, postsUsed: postsUsed, storiesUsed: o.stories ? stories.length : 0 };
   }
 
+  // ---------- Tema (aydınlık / karanlık) ----------
+  // Stillerde '@token' yazan renkler aktif temadan doldurulur ve tema değişince güncellenir.
+  const THEMES = {
+    light: {
+      text: '#262626', muted: '#5e5e5e', faint: '#737373', card: '#ffffff', sunken: '#fafafa',
+      line: '#efefef', border: '#dbdbdb', btnBg: '#ffffff', accent: '#0095f6', link: '#00376b',
+      danger: '#c00000', badgeBg: '#e0f1ff', badgeFg: '#0064b0', shadow: 'rgba(0,0,0,.18)', scheme: 'light',
+    },
+    dark: {
+      text: '#f5f5f5', muted: '#b8b8b8', faint: '#9a9a9a', card: '#1c1c1c', sunken: '#121212',
+      line: '#2f2f2f', border: '#454545', btnBg: '#2a2a2a', accent: '#0095f6', link: '#8cc4ff',
+      danger: '#ff6b6b', badgeBg: '#0b3050', badgeFg: '#9fd0ff', shadow: 'rgba(0,0,0,.6)', scheme: 'dark',
+    },
+  };
+  const themed = []; // [element, cssProp, şablon]
+  const mq = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+  const isDarkColor = (c) => {
+    const m = String(c).match(/rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)(?:[,\s/]+([\d.]+))?/);
+    if (!m || (m[4] !== undefined && Number(m[4]) === 0)) return null; // saydam / bilinmiyor
+    return (0.2126 * m[1] + 0.7152 * m[2] + 0.0722 * m[3]) / 255 < 0.5;
+  };
+  function detectDark() {
+    // Önce Instagram'ın kendi temasına bak (uygulama içinden seçilmiş olabilir), sonra sistem tercihine.
+    if (document.documentElement.classList.contains('__fb-dark-mode')) return true;
+    if (document.documentElement.classList.contains('__fb-light-mode')) return false;
+    for (const el of [document.body, document.documentElement]) {
+      const d = el && isDarkColor(getComputedStyle(el).backgroundColor);
+      if (d !== null && d !== undefined) return d;
+    }
+    return !!(mq && mq.matches);
+  }
+  let T = THEMES[detectDark() ? 'dark' : 'light'];
+  // Listeden silinen satırların kayıtlarını at (her yeniden çizimde birikmesin).
+  function pruneThemed() {
+    if (!ui.panel || !ui.panel.isConnected) return;
+    for (let i = themed.length - 1; i >= 0; i--) if (!themed[i][0].isConnected) themed.splice(i, 1);
+  }
+  const fill = (tpl) => tpl.replace(/@(\w+)/g, (_, k) => T[k] || '');
+  function applyTheme() {
+    T = THEMES[detectDark() ? 'dark' : 'light'];
+    pruneThemed();
+    for (const [el, prop, tpl] of themed) el.style[prop] = fill(tpl);
+    if (ui.panel) ui.panel.style.colorScheme = T.scheme;
+  }
+
   // ---------- Arayüz ----------
+  const INHERIT_GUARD = { label: 1, input: 1, select: 1, option: 1, button: 1, strong: 1, b: 1, span: 1, textarea: 1 };
   function h(tag, props, ...kids) {
     const el = document.createElement(tag);
+    const style = Object.assign({}, (props && props.style) || {});
+    // Instagram'ın kendi CSS'i bazı etiketlerin rengini eziyor; metin rengini her zaman açıkça ver.
+    if (INHERIT_GUARD[tag] && !('color' in style)) style.color = '@text';
+    if ((tag === 'input' || tag === 'select' || tag === 'textarea') && !('background' in style) && props && props.type !== 'checkbox') {
+      style.background = '@card';
+    }
+    for (const [k, v] of Object.entries(style)) {
+      if (typeof v === 'string' && v.includes('@')) { themed.push([el, k, v]); el.style[k] = fill(v); }
+      else el.style[k] = v;
+    }
     for (const [k, v] of Object.entries(props || {})) {
-      if (k === 'style') Object.assign(el.style, v);
+      if (k === 'style') continue;
       else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
       else if (k in el) el[k] = v;
       else el.setAttribute(k, v);
@@ -347,19 +403,19 @@
     onclick: onclick,
     style: {
       padding: '7px 12px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600',
-      border: primary ? '1px solid #0095f6' : '1px solid #dbdbdb',
-      background: primary ? '#0095f6' : '#fff', color: primary ? '#fff' : '#262626',
+      border: primary ? '1px solid @accent' : '1px solid @border',
+      background: primary ? '@accent' : '@btnBg', color: primary ? '#ffffff' : '@text',
     },
   }, label);
 
   const ui = {};
-  ui.status = h('div', { style: { fontSize: '12px', color: '#555', margin: '6px 0' } }, 'Hazır.');
+  ui.status = h('div', { style: { fontSize: '12px', color: '@muted', margin: '6px 0' } }, 'Hazır.');
   ui.log = h('div', { style: {
-    fontSize: '11px', fontFamily: 'Consolas, monospace', background: '#fafafa', border: '1px solid #eee',
+    fontSize: '11px', fontFamily: 'Consolas, monospace', background: '@sunken', border: '1px solid @line',
     borderRadius: '6px', padding: '6px', maxHeight: '110px', overflowY: 'auto', whiteSpace: 'pre-wrap',
   } });
   ui.postCount = h('input', { type: 'number', min: 1, max: 200, value: CONFIG.DEFAULT_POSTS, style: {
-    width: '60px', padding: '4px', border: '1px solid #dbdbdb', borderRadius: '6px',
+    width: '60px', padding: '4px', border: '1px solid @border', borderRadius: '6px',
   } });
   const cb = () => h('input', { type: 'checkbox', checked: true, style: { marginRight: '4px' } });
   ui.cbLikes = cb(); ui.cbComments = cb(); ui.cbStories = cb();
@@ -367,16 +423,16 @@
   ui.stopBtn = btn('Durdur', () => { stopped = true; setStatus('Durduruluyor…'); });
   ui.stopBtn.disabled = true;
   ui.summary = h('div', { style: { fontSize: '13px', margin: '8px 0', lineHeight: '1.5' } });
-  ui.filter = h('select', { onchange: () => renderList(), style: { padding: '4px', borderRadius: '6px', border: '1px solid #dbdbdb' } },
+  ui.filter = h('select', { onchange: () => renderList(), style: { padding: '4px', borderRadius: '6px', border: '1px solid @border' } },
     h('option', { value: '0' }, 'Hiç etkileşim yok'),
     h('option', { value: '1' }, 'En fazla 1 etkileşim'),
     h('option', { value: '2' }, 'En fazla 2 etkileşim'),
     h('option', { value: 'all' }, 'Herkes'));
   ui.hideDone = h('input', { type: 'checkbox', checked: false, onchange: () => renderList(), style: { marginRight: '4px' } });
   ui.search = h('input', { type: 'search', placeholder: 'Ara…', oninput: () => renderList(), style: {
-    flex: '1', minWidth: '80px', padding: '4px 6px', border: '1px solid #dbdbdb', borderRadius: '6px',
+    flex: '1', minWidth: '80px', padding: '4px 6px', border: '1px solid @border', borderRadius: '6px',
   } });
-  ui.list = h('div', { style: { borderTop: '1px solid #eee', marginTop: '6px' } });
+  ui.list = h('div', { style: { borderTop: '1px solid @line', marginTop: '6px' } });
   ui.resultsBox = h('div', { style: { display: 'none' } },
     ui.summary,
     h('div', { style: { display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' } }, ui.filter, ui.search),
@@ -386,7 +442,7 @@
     ui.list);
 
   ui.body = h('div', { style: { padding: '12px 14px', overflowY: 'auto', maxHeight: 'calc(90vh - 48px)' } },
-    h('div', { style: { fontSize: '12px', color: '#555', marginBottom: '8px', lineHeight: '1.45' } },
+    h('div', { style: { fontSize: '12px', color: '@muted', marginBottom: '8px', lineHeight: '1.45' } },
       'Yalnızca okur, kimseyi silmez. Veriler sadece bu tarayıcıda kalır. ',
       'Analiz birkaç dakika sürer, sayfayı kapatma.'),
     h('div', { style: { fontSize: '13px', display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' } },
@@ -397,8 +453,8 @@
       h('label', null, ui.cbStories, 'Hikâye izleyenleri')),
     h('div', { style: { display: 'flex', gap: '6px' } }, ui.startBtn, ui.stopBtn),
     ui.status, ui.log, ui.resultsBox,
-    h('div', { style: { marginTop: '14px', paddingTop: '8px', borderTop: '1px solid #eee' } },
-      h('a', { href: '#', onclick: (e) => { e.preventDefault(); resetData(); }, style: { fontSize: '11px', color: '#c00' } },
+    h('div', { style: { marginTop: '14px', paddingTop: '8px', borderTop: '1px solid @line' } },
+      h('a', { href: '#', onclick: (e) => { e.preventDefault(); resetData(); }, style: { fontSize: '11px', color: '@danger' } },
         'Kayıtlı tüm verileri sil')));
 
   let minimized = false;
@@ -406,31 +462,41 @@
     minimized = !minimized;
     ui.body.style.display = minimized ? 'none' : 'block';
     ui.minBtn.textContent = minimized ? '▢' : '–';
-  }, style: { background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: '#262626' } }, '–');
+  }, style: { background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: '@text' } }, '–');
 
   ui.panel = h('div', { style: {
     position: 'fixed', top: '16px', right: '16px', width: '400px', maxWidth: 'calc(100vw - 32px)',
-    maxHeight: '90vh', background: '#fff', color: '#262626', border: '1px solid #dbdbdb', borderRadius: '12px',
-    boxShadow: '0 8px 30px rgba(0,0,0,.18)', zIndex: '2147483647',
+    maxHeight: '90vh', background: '@card', color: '@text', border: '1px solid @border', borderRadius: '12px',
+    boxShadow: '0 8px 30px @shadow', zIndex: '2147483647', colorScheme: T.scheme,
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif',
   } },
     h('div', { style: {
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      padding: '10px 14px', borderBottom: '1px solid #eee', height: '28px',
+      padding: '10px 14px', borderBottom: '1px solid @line', height: '28px',
     } },
       h('strong', { style: { fontSize: '14px' } }, 'Etkileşim Analizi'),
       h('div', null, ui.minBtn,
         h('button', { title: 'Kapat', onclick: close, style: {
-          background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: '#262626',
+          background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: '@text',
         } }, '×'))),
     ui.body);
   document.body.append(ui.panel);
+
+  // Tema değişirse (sistem ayarı ya da Instagram'ın kendi tema düğmesi) panel de değişsin.
+  if (mq) {
+    if (mq.addEventListener) mq.addEventListener('change', applyTheme);
+    else if (mq.addListener) mq.addListener(applyTheme);
+  }
+  const themeObserver = new MutationObserver(applyTheme);
+  themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style'] });
 
   window.__igEtk = { focus: () => { ui.panel.style.display = 'block'; } };
 
   function close() {
     if (running && !confirm('Analiz devam ediyor. Durdurup kapatılsın mı?')) return;
     stopped = true;
+    themeObserver.disconnect();
+    if (mq && mq.removeEventListener) mq.removeEventListener('change', applyTheme);
     ui.panel.remove();
     delete window.__igEtk;
   }
@@ -458,9 +524,9 @@
     ui.summary.append(
       h('div', null, 'Takipçi: ', h('b', null, r.rows.length),
         '  ·  İncelenen: ' + r.postsUsed + ' gönderi, ' + r.storiesUsed + ' hikâye'),
-      h('div', null, 'Hiç etkileşim yok: ', h('b', { style: { color: '#c00' } }, zero),
+      h('div', null, 'Hiç etkileşim yok: ', h('b', { style: { color: '@danger' } }, zero),
         '  ·  Sadece 1 etkileşim: ', h('b', null, one)),
-      h('div', { style: { fontSize: '11px', color: '#777' } },
+      h('div', { style: { fontSize: '11px', color: '@faint' } },
         'Liste son tarih: ' + new Date(store.followersAt).toLocaleString('tr-TR') +
         '. Yeni takip edenler henüz etkileşime girmemiş olabilir; en yeniler listenin en altında “yeni” etiketiyle görünür.'));
     ui.resultsBox.style.display = 'block';
@@ -481,11 +547,12 @@
   function renderList() {
     const rows = filteredRows();
     ui.list.textContent = '';
+    pruneThemed();
     if (!rows.length) {
-      ui.list.append(h('div', { style: { fontSize: '13px', color: '#777', padding: '10px 0' } }, 'Bu filtrede kimse yok.'));
+      ui.list.append(h('div', { style: { fontSize: '13px', color: '@faint', padding: '10px 0' } }, 'Bu filtrede kimse yok.'));
       return;
     }
-    ui.list.append(h('div', { style: { fontSize: '11px', color: '#777', padding: '6px 0' } },
+    ui.list.append(h('div', { style: { fontSize: '11px', color: '@faint', padding: '6px 0' } },
       rows.length + ' kişi  ·  ❤ beğeni  💬 yorum  👁 hikâye  ·  ☐ = temizledim'));
     const newest = Math.max(10, Math.round(lastRows.length * 0.03)); // en yeni ~%3
     for (const x of rows) {
@@ -498,20 +565,20 @@
       } });
       const link = h('a', {
         href: 'https://www.instagram.com/' + encodeURIComponent(x.u) + '/', target: '_blank', rel: 'noopener',
-        style: { color: '#00376b', fontWeight: '600', textDecoration: done ? 'line-through' : 'none' },
+        style: { color: '@link', fontWeight: '600', textDecoration: done ? 'line-through' : 'none' },
       }, '@' + x.u);
       const row = h('div', { style: {
-        display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 0', borderBottom: '1px solid #f3f3f3',
+        display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 0', borderBottom: '1px solid @line',
         fontSize: '13px', opacity: done ? '.45' : '1',
       } },
         check,
         h('div', { style: { flex: '1', minWidth: '0', overflow: 'hidden' } },
           link,
           x.idx < newest ? h('span', { style: {
-            fontSize: '10px', background: '#e0f1ff', color: '#0064b0', borderRadius: '4px', padding: '1px 4px', marginLeft: '6px',
+            fontSize: '10px', background: '@badgeBg', color: '@badgeFg', borderRadius: '4px', padding: '1px 4px', marginLeft: '6px',
           } }, 'yeni') : null,
-          x.n ? h('div', { style: { fontSize: '11px', color: '#777', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' } }, x.n) : null),
-        h('div', { style: { fontSize: '12px', color: '#555', whiteSpace: 'nowrap' } },
+          x.n ? h('div', { style: { fontSize: '11px', color: '@faint', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' } }, x.n) : null),
+        h('div', { style: { fontSize: '12px', color: '@muted', whiteSpace: 'nowrap' } },
           '❤' + x.l + ' 💬' + x.c + ' 👁' + x.s));
       ui.list.append(row);
     }
