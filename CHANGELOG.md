@@ -1,6 +1,15 @@
 # Değişiklikler
 
-## 1.3.0 (2026-11-20)
+## 0.3.0 (2026-11-20)
+
+- **Panel boyutlandırılabilir:** Sağ alt köşeden çekerek büyütüp küçültebilirsin.
+- **Panel taşınabilir:** Başlıktan sürükleyerek taşıyabilirsin. Başlığa çift tıklarsan varsayılan konum ve boyuta döner. Konum ve boyut bir sonraki açılışta hatırlanır.
+- Başlıkta sürüm numarası görünür.
+- Düzeltme: Gönderi listesi alınamayınca (örneğin hiç gönderisi olmayan hesaplarda HTTP 404) analiz tamamen duruyordu. Artık uyarı verip hikâyelere geçiyor.
+- Gönderiler önce web sitesinin kullandığı kullanıcı adı adresinden, olmazsa kimlik adresinden isteniyor.
+- Çalışmayan profil bilgisi isteği kaldırıldı (HTTP 404).
+
+## 0.2.0 (2026-11-20)
 
 - **Canlı liste:** Tarama sırasında etkileşime giren takipçiler anında listelenir. Varsayılan görünüm "Etkileşime girenler (çoktan aza)".
 - **Dönem özeti:** Son 7/30/90 günde ya da tüm taranan veride kaç takipçinin etkileşime girdiği, yüzdesi ve türüne göre dağılımı.
@@ -8,22 +17,19 @@
 - Takip ettiğin kişiler "takip ediyorsun" etiketiyle gösterilir.
 - Çıkarılan biri seni tekrar takip ederse "çıkarıldı" işareti kendiliğinden kalkar.
 
-## 1.2.0 (2026-11-20)
+## 0.1.2 (2026-11-20)
 
 - Düzeltme: İlk istekte yanlışlıkla "Instagram geçici bir sınır koydu" deyip duruyordu. Genel hata mesajları artık sınır olarak algılanmıyor.
-- Profil bilgisi web'in kullandığı adreslerden alınıyor. Alınamazsa analiz durmadan devam ediyor.
 - Hata satırlarında teşhis için adres, HTTP kodu ve Instagram'ın mesajı görünüyor.
 - Bekleme mantığı arka plandaki sekmelerde daha az yavaşlıyor. "Durdur" artık hemen etki ediyor.
 
-## 1.1.0 (2026-11-20)
+## 0.1.1 (2026-11-20)
 
 - Panel artık Instagram'ın temasına (yoksa sistemin tercihine) göre aydınlık veya karanlık açılıyor ve tema değişince kendini güncelliyor.
-- Düzeltme: Instagram karanlık moddayken seçenek yazıları (Beğeniler, Yorumlar vb.) beyaz zeminde görünmüyordu.
+- Düzeltme: Instagram karanlık moddayken seçenek yazıları beyaz zeminde görünmüyordu.
 
-## 1.0.0 (2026-11-20)
+## 0.1.0 (2026-11-20)
 
-- İlk sürüm.
-- Takipçileri, son N gönderinin beğenenlerini ve yorum yapanlarını, yayındaki hikâyelerin izleyenlerini toplar.
-- Hikâye izleyenleri çalıştırmalar arasında tarayıcıda birikir.
-- Filtreleme, arama, "temizledim" işareti, kullanıcı adlarını kopyalama, CSV dışa aktarma.
+- İlk sürüm: takipçiler, son N gönderinin beğenenleri ve yorum yapanları, yayındaki hikâyelerin izleyenleri.
+- Filtreleme, arama, kullanıcı adlarını kopyalama, CSV dışa aktarma.
 - Hız sınırı koruması: istekler arası bekleme, düzenli molalar, Instagram sınır koyduğunda otomatik durma.

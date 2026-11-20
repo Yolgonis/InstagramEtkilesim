@@ -1,5 +1,5 @@
 /*!
- * Instagram Etkileşim Analizi, v1.3
+ * Instagram Etkileşim Analizi, v0.3.0
  * Seni takip eden ama gönderilerini beğenmeyen, yorum yapmayan ve
  * hikâyelerini izlemeyen kişileri listeler.
  *
@@ -13,6 +13,7 @@
 (async () => {
   'use strict';
 
+  const VERSION = '0.3.0';
   const CONFIG = {
     DELAY_MIN_MS: 2000,     // istekler arası en az bekleme
     DELAY_MAX_MS: 4500,     // istekler arası en fazla bekleme
@@ -147,19 +148,13 @@
   }
 
   // ---------- Veri toplama ----------
-  // Profil bilgisi yalnızca gösterim içindir; alınamazsa analiz yine de devam eder.
+  // Kullanıcı adı, gönderileri isteyebilmek için gerekiyor. Alınamazsa analiz yine de devam eder.
   async function fetchMe() {
     try {
       const f = await api('accounts/edit/web_form_data/');
       const username = f && f.form_data && f.form_data.username;
       if (!username) throw new Error('kullanıcı adı yok');
-      const p = await api('users/web_profile_info/?username=' + encodeURIComponent(username));
-      const u = (p && p.data && p.data.user) || {};
-      store.me = {
-        username: username,
-        followers: u.edge_followed_by ? u.edge_followed_by.count : null,
-        media: u.edge_owner_to_timeline_media ? u.edge_owner_to_timeline_media.count : null,
-      };
+      store.me = { username: username };
       save();
     } catch (e) {
       if (e instanceof StopError && e.status === 429) throw e; // gerçek sınır: dur
@@ -182,20 +177,22 @@
     return out;
   }
 
+  // Gönderi listesi için iki adres denenir: önce kullanıcı adıyla (web sitesinin kullandığı), sonra kimlikle.
   async function fetchPosts(limit) {
     const items = [];
     let maxId = null;
-    let useUsername = false;
+    const routes = [];
+    if (store.me && store.me.username) routes.push((qs) => 'feed/user/' + encodeURIComponent(store.me.username) + '/username/' + qs);
+    routes.push((qs) => 'feed/user/' + USER_ID + '/' + qs);
+    let r = 0;
     while (items.length < limit) {
       const qs = '?count=12' + (maxId ? '&max_id=' + encodeURIComponent(maxId) : '');
       let d;
       try {
-        d = await api(useUsername && store.me
-          ? 'feed/user/' + encodeURIComponent(store.me.username) + '/username/' + qs
-          : 'feed/user/' + USER_ID + '/' + qs);
+        d = await api(routes[r](qs));
       } catch (e) {
-        if (e instanceof StopError || useUsername || !store.me) throw e;
-        useUsername = true; // diğer adresi dene
+        if (e instanceof StopError || r >= routes.length - 1 || maxId) throw e;
+        r++; // diğer adresi dene
         continue;
       }
       (d.items || []).forEach((it) => items.push(it));
@@ -365,10 +362,7 @@
 
     try {
       await fetchMe();
-      if (store.me) {
-        log('Hesap: @' + store.me.username +
-          (store.me.followers != null ? ' (' + store.me.followers + ' takipçi, ' + store.me.media + ' gönderi)' : ''));
-      }
+      if (store.me) log('Hesap: @' + store.me.username);
 
       log('Takipçi listesi alınıyor…');
       const followers = await fetchFollowers();
@@ -393,8 +387,15 @@
 
       if (opts.likes || opts.comments) {
         log('Son ' + opts.posts + ' gönderi alınıyor…');
-        const posts = await fetchPosts(opts.posts);
-        log('✓ ' + posts.length + ' gönderi bulundu.');
+        let posts = [];
+        try {
+          posts = await fetchPosts(opts.posts);
+          log(posts.length ? '✓ ' + posts.length + ' gönderi bulundu.' : 'Hesapta gönderi yok. Sadece hikâyeler incelenecek.');
+        } catch (e) {
+          if (e instanceof StopError) throw e;
+          // Gönderisi olmayan hesaplarda Instagram bu adres için 404 dönebiliyor.
+          log('⚠ Gönderiler alınamadı (hesapta gönderi olmayabilir). Hikâyelere geçiliyor. ' + e.message);
+        }
         store.lastPostIds = [];
         for (let i = 0; i < posts.length; i++) {
           const p = posts[i];
@@ -417,7 +418,7 @@
           save();
           liveRender();
         }
-        log('✓ Gönderiler tamam.');
+        if (posts.length) log('✓ Gönderiler tamam.');
       }
 
       if (opts.stories) {
@@ -650,30 +651,108 @@
       h('a', { href: '#', onclick: (e) => { e.preventDefault(); resetData(); }, style: { fontSize: '11px', color: '@danger' } },
         'Kayıtlı tüm verileri sil')));
 
+  // ---------- Panel: taşınabilir (başlıktan sürükle) ve boyutlandırılabilir (sağ alt köşeden çek) ----------
+  const LAYOUT_KEY = 'igEtkilesim_layout';
+  const MARGIN = 8;
+  let layout = null;
+  try { layout = JSON.parse(localStorage.getItem(LAYOUT_KEY)); } catch (e) { layout = null; }
+  const saveLayout = () => {
+    if (minimized) return;
+    const r = ui.panel.getBoundingClientRect();
+    // Yükseklik yalnızca kullanıcı köşeden çekip sabitlediyse kaydedilir; yoksa panel içeriğe göre uzar.
+    const fixedH = /px$/.test(ui.panel.style.height);
+    try {
+      localStorage.setItem(LAYOUT_KEY, JSON.stringify({
+        left: Math.round(r.left), top: Math.round(r.top), width: Math.round(r.width),
+        height: fixedH ? Math.round(r.height) : null,
+      }));
+    } catch (e) { /* yok say */ }
+  };
+  // Paneli ekranın içinde tut.
+  function clampPanel() {
+    const r = ui.panel.getBoundingClientRect();
+    const left = clamp(r.left, MARGIN, Math.max(MARGIN, window.innerWidth - r.width - MARGIN));
+    const top = clamp(r.top, MARGIN, Math.max(MARGIN, window.innerHeight - 48));
+    ui.panel.style.left = left + 'px';
+    ui.panel.style.top = top + 'px';
+  }
+
   let minimized = false;
+  let heightBeforeMin = '';
   ui.minBtn = h('button', { title: 'Küçült', onclick: () => {
     minimized = !minimized;
+    if (minimized) { heightBeforeMin = ui.panel.style.height; ui.panel.style.height = 'auto'; }
+    else ui.panel.style.height = heightBeforeMin;
+    ui.panel.style.resize = minimized ? 'none' : 'both';
     ui.body.style.display = minimized ? 'none' : 'block';
     ui.minBtn.textContent = minimized ? '▢' : '–';
+    ui.minBtn.title = minimized ? 'Büyüt' : 'Küçült';
   }, style: { background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: '@text' } }, '–');
 
+  ui.header = h('div', { title: 'Taşımak için sürükle', style: {
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between', flex: '0 0 auto',
+    padding: '10px 14px', borderBottom: '1px solid @line', height: '28px', cursor: 'move', userSelect: 'none',
+  } },
+    h('div', null,
+      h('strong', { style: { fontSize: '14px' } }, 'Etkileşim Analizi'),
+      h('span', { style: { fontSize: '11px', color: '@faint', marginLeft: '6px' } }, 'v' + VERSION)),
+    h('div', null, ui.minBtn,
+      h('button', { title: 'Kapat', onclick: close, style: {
+        background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: '@text',
+      } }, '×')));
+
+  const startW = (layout && layout.width) || 400;
   ui.panel = h('div', { style: {
-    position: 'fixed', top: '16px', right: '16px', width: '400px', maxWidth: 'calc(100vw - 32px)',
-    maxHeight: '90vh', background: '@card', color: '@text', border: '1px solid @border', borderRadius: '12px',
+    position: 'fixed',
+    left: ((layout && layout.left) != null ? layout.left : window.innerWidth - startW - 16) + 'px',
+    top: ((layout && layout.top) != null ? layout.top : 16) + 'px',
+    width: startW + 'px',
+    height: layout && layout.height ? layout.height + 'px' : 'auto',
+    minWidth: '300px', minHeight: '120px',
+    maxWidth: 'calc(100vw - ' + 2 * MARGIN + 'px)', maxHeight: 'calc(100vh - ' + 2 * MARGIN + 'px)',
+    display: 'flex', flexDirection: 'column', overflow: 'hidden', resize: 'both',
+    background: '@card', color: '@text', border: '1px solid @border', borderRadius: '12px',
     boxShadow: '0 8px 30px @shadow', zIndex: '2147483647', colorScheme: T.scheme,
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif',
-  } },
-    h('div', { style: {
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      padding: '10px 14px', borderBottom: '1px solid @line', height: '28px',
-    } },
-      h('strong', { style: { fontSize: '14px' } }, 'Etkileşim Analizi'),
-      h('div', null, ui.minBtn,
-        h('button', { title: 'Kapat', onclick: close, style: {
-          background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: '@text',
-        } }, '×'))),
-    ui.body);
+  } }, ui.header, ui.body);
+  // Gövde kalan alanı doldurur ve kendi içinde kayar.
+  Object.assign(ui.body.style, { flex: '1 1 auto', minHeight: '0', maxHeight: 'none' });
   document.body.append(ui.panel);
+  clampPanel();
+
+  // Sürükleyerek taşıma
+  let drag = null;
+  ui.header.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || e.target.closest('button')) return;
+    const r = ui.panel.getBoundingClientRect();
+    drag = { dx: e.clientX - r.left, dy: e.clientY - r.top };
+    ui.header.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+  ui.header.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    ui.panel.style.left = (e.clientX - drag.dx) + 'px';
+    ui.panel.style.top = (e.clientY - drag.dy) + 'px';
+    clampPanel();
+  });
+  const endDrag = () => { if (drag) { drag = null; saveLayout(); } };
+  ui.header.addEventListener('pointerup', endDrag);
+  ui.header.addEventListener('pointercancel', endDrag);
+  // Başlığa çift tıklayınca varsayılan konum ve boyuta dön
+  ui.header.addEventListener('dblclick', (e) => {
+    if (e.target.closest('button')) return;
+    try { localStorage.removeItem(LAYOUT_KEY); } catch (err) { /* yok say */ }
+    Object.assign(ui.panel.style, { width: '400px', height: 'auto', top: '16px', left: (window.innerWidth - 416) + 'px' });
+    clampPanel();
+  });
+  // Boyut değişince kaydet (sağ alt köşeden çekince)
+  let resizeTimer = null;
+  const resizeObserver = window.ResizeObserver ? new ResizeObserver(() => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(saveLayout, 300);
+  }) : null;
+  if (resizeObserver) resizeObserver.observe(ui.panel);
+  window.addEventListener('resize', clampPanel);
 
   // Tema değişirse (sistem ayarı ya da Instagram'ın kendi tema düğmesi) panel de değişsin.
   if (mq) {
@@ -690,6 +769,8 @@
     stopped = true;
     if (wakeUp) wakeUp();
     themeObserver.disconnect();
+    if (resizeObserver) resizeObserver.disconnect();
+    window.removeEventListener('resize', clampPanel);
     if (mq && mq.removeEventListener) mq.removeEventListener('change', applyTheme);
     ui.panel.remove();
     delete window.__igEtk;
