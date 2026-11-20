@@ -1,5 +1,12 @@
 # Değişiklikler
 
+## 0.4.0 (2026-11-20)
+
+- **Liste sekmeleri** (sayılarıyla): **Takipçilerim**, **Takip etmediklerim** (seni takip eden ama senin takip etmediklerin) ve **Beni takip etmeyenler** (takip ettiğin ama seni takip etmeyenler).
+- "Beni takip etmeyenler" sekmesinde buton **takipten çıkarma** moduna geçer. Aynı hız koruması ve günlük 100 işlem sınırı geçerli.
+- **Onaylı hesaplar** isminin yanında mavi tikle gösterilir.
+- CSV'ye "onaylı" ve "seni takip ediyor" sütunları eklendi.
+
 ## 0.3.0 (2026-11-20)
 
 - **Panel boyutlandırılabilir:** Sağ alt köşeden çekerek büyütüp küçültebilirsin.

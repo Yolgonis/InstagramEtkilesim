@@ -1,5 +1,5 @@
 /*!
- * Instagram Etkileşim Analizi, v0.3.0
+ * Instagram Etkileşim Analizi, v0.4.0
  * Seni takip eden ama gönderilerini beğenmeyen, yorum yapmayan ve
  * hikâyelerini izlemeyen kişileri listeler.
  *
@@ -13,7 +13,7 @@
 (async () => {
   'use strict';
 
-  const VERSION = '0.3.0';
+  const VERSION = '0.4.0';
   const CONFIG = {
     DELAY_MIN_MS: 2000,     // istekler arası en az bekleme
     DELAY_MAX_MS: 4500,     // istekler arası en fazla bekleme
@@ -89,7 +89,7 @@
   }
 
   const idOf = (u) => String(u.pk_id || u.pk || u.id || '');
-  const slim = (u) => ({ id: idOf(u), u: u.username || '', n: u.full_name || '' });
+  const slim = (u) => ({ id: idOf(u), u: u.username || '', n: u.full_name || '', v: u.is_verified ? 1 : 0 });
   const mediaPk = (it) => String(it.pk || String(it.id || '').split('_')[0]);
 
   // post: true ise POST isteği atar (takipçi çıkarma gibi işlemler). İşlemlerin kendi bekleme düzeni
@@ -245,17 +245,17 @@
     return [...ids];
   }
 
-  // Senin takip ettiğin kişiler (listede "takip ediyorsun" etiketi ve takibi bırakma seçeneği için).
+  // Senin takip ettiğin kişiler ("takip ediyorsun" etiketi, "Beni takip etmeyenler" sekmesi ve takibi bırakma için).
   async function fetchFollowing() {
-    const ids = new Set();
+    const out = new Map();
     let maxId = null;
     do {
       const d = await api('friendships/' + USER_ID + '/following/?count=50' + (maxId ? '&max_id=' + encodeURIComponent(maxId) : ''));
-      (d.users || []).forEach((u) => ids.add(idOf(u)));
+      (d.users || []).forEach((u) => out.set(idOf(u), slim(u)));
       maxId = d.next_max_id || null;
-      setStatus('Takip ettiklerin alınıyor: ' + ids.size);
+      setStatus('Takip ettiklerin alınıyor: ' + out.size);
     } while (maxId);
-    return [...ids];
+    return [...out.values()];
   }
 
   // ---------- Takipçi çıkarma ----------
@@ -274,30 +274,36 @@
     store.removals = { [k]: (store.removals[k] || 0) + 1 }; // sadece bugünü tut
   }
 
+  // "Beni takip etmeyenler" sekmesinde seçilenler takipten çıkarılır (unfollow);
+  // diğer sekmelerde seçilenler takipçilerinden çıkarılır (remove follower).
+  const isDone = (x) => (x.isFollower ? !!store.done[x.id] : !following.has(x.id));
   async function removeSelected() {
     if (running) return;
-    const unfollowToo = ui.cbUnfollow.checked;
-    const targets = lastRows.filter((x) => selected.has(x.id) && !store.done[x.id]);
+    const unfollowMode = view === 'nonFollowers';
+    const unfollowToo = !unfollowMode && ui.cbUnfollow.checked;
+    const targets = viewRows().filter((x) => selected.has(x.id) && !isDone(x));
     if (!targets.length) { alert('Önce listeden kişi seç.'); return; }
     const left = REMOVE.DAILY_LIMIT - removedToday();
     if (left <= 0) {
-      alert('Bugün zaten ' + REMOVE.DAILY_LIMIT + ' kişi çıkardın. Hesabını korumak için yarın devam et.');
+      alert('Bugün zaten ' + REMOVE.DAILY_LIMIT + ' işlem yaptın. Hesabını korumak için yarın devam et.');
       return;
     }
     const batch = targets.slice(0, left);
     const avgMin = Math.ceil((batch.length * (REMOVE.DELAY_MIN_MS + REMOVE.DELAY_MAX_MS) / 2 +
       Math.floor(batch.length / REMOVE.PAUSE_EVERY) * REMOVE.PAUSE_MS) / 60000);
-    const msg = batch.length + ' kişi takipçilerinden çıkarılacak' +
+    const what = unfollowMode ? 'takipten çıkarılacak (artık onları takip etmeyeceksin)' : 'takipçilerinden çıkarılacak';
+    const msg = batch.length + ' kişi ' + what +
       (unfollowToo ? ' (takip ettiklerini ayrıca takipten de çıkaracaksın)' : '') + '.\n\n' +
-      (batch.length < targets.length ? 'Günlük sınır yüzünden seçtiğin ' + targets.length + ' kişiden ilk ' + batch.length + ' kişi çıkarılacak.\n\n' : '') +
+      (batch.length < targets.length ? 'Günlük sınır yüzünden seçtiğin ' + targets.length + ' kişiden ilk ' + batch.length + ' kişi işlenecek.\n\n' : '') +
       'Tahmini süre: yaklaşık ' + avgMin + ' dakika. Bu sürede sekmeyi açık tut.\n' +
-      'Çıkarılan kişilere bildirim gitmez ama bu işlem geri alınamaz; tekrar takip etmeleri gerekir.\n\nDevam edilsin mi?';
+      'Karşı tarafa bildirim gitmez ama bu işlem otomatik geri alınamaz.\n\nDevam edilsin mi?';
     if (!confirm(msg)) return;
 
     running = true;
     stopped = false;
     setRunningUI(true);
-    log('— Takipçi çıkarma başladı (' + batch.length + ' kişi) —');
+    const verb = unfollowMode ? 'takipten çıkarıldı' : 'takipçilerinden çıkarıldı';
+    log('— ' + (unfollowMode ? 'Takipten çıkarma' : 'Takipçi çıkarma') + ' başladı (' + batch.length + ' kişi) —');
     let ok = 0;
     try {
       for (let i = 0; i < batch.length; i++) {
@@ -312,32 +318,40 @@
           await wait(d);
         }
         try {
-          const r = await api('friendships/remove_follower/' + x.id + '/', true);
-          if (r.status && r.status !== 'ok') throw new Error('Instagram onaylamadı: ' + r.status);
-          if (unfollowToo && following.has(x.id)) {
-            await wait(3000 + Math.random() * 3000);
-            await api('friendships/destroy/' + x.id + '/', true);
+          const unfollow = async () => {
+            const r = await api('friendships/destroy/' + x.id + '/', true);
+            if (r.status && r.status !== 'ok') throw new Error('Instagram onaylamadı: ' + r.status);
             following.delete(x.id);
             store.following = [...following];
+          };
+          if (unfollowMode) {
+            await unfollow();
+          } else {
+            const r = await api('friendships/remove_follower/' + x.id + '/', true);
+            if (r.status && r.status !== 'ok') throw new Error('Instagram onaylamadı: ' + r.status);
+            store.done[x.id] = 1;
+            if (unfollowToo && following.has(x.id)) {
+              await wait(3000 + Math.random() * 3000);
+              await unfollow();
+            }
           }
-          store.done[x.id] = 1;
           selected.delete(x.id);
           countRemoval();
           save();
           ok++;
-          log('✓ @' + x.u + ' çıkarıldı.');
-          renderList();
+          log('✓ @' + x.u + ' ' + verb + '.');
+          renderResults();
         } catch (e) {
           if (e instanceof StopError) throw e;
-          log('⚠ @' + x.u + ' çıkarılamadı: ' + e.message);
+          log('⚠ @' + x.u + ' işlenemedi: ' + e.message);
         }
       }
-      setStatus('Bitti. ' + ok + ' kişi çıkarıldı. Bugün toplam: ' + removedToday() + ' / ' + REMOVE.DAILY_LIMIT);
+      setStatus('Bitti. ' + ok + ' kişi ' + verb + '. Bugün toplam: ' + removedToday() + ' / ' + REMOVE.DAILY_LIMIT);
     } catch (e) {
       log('■ ' + e.message);
-      setStatus('Durdu. ' + ok + ' kişi çıkarıldı.');
+      setStatus('Durdu. ' + ok + ' kişi ' + verb + '.');
     } finally {
-      log('— Takipçi çıkarma bitti: ' + ok + ' kişi —');
+      log('— Bitti: ' + ok + ' kişi ' + verb + ' —');
       save();
       running = false;
       setRunningUI(false);
@@ -376,7 +390,8 @@
       liveRender();
 
       try {
-        following = new Set(await fetchFollowing());
+        store.followingUsers = await fetchFollowing();
+        following = new Set(store.followingUsers.map((u) => u.id));
         store.following = [...following];
         save();
         log('✓ ' + following.size + ' kişiyi takip ediyorsun.');
@@ -481,13 +496,21 @@
     }
     const stories = Object.values(store.stories).filter((s) => !since || s.t >= since);
     if (o.stories) stories.forEach((s) => (s.viewers || []).forEach((id) => inc(S, id)));
-    const rows = followers.map((f, idx) => {
+    const mk = (f, idx, isFollower) => {
       const l = L.get(f.id) || 0, c = C.get(f.id) || 0, s = S.get(f.id) || 0;
-      return { id: f.id, u: f.u, n: f.n, idx: idx, l: l, c: c, s: s, total: l + c + s, fol: following.has(f.id) };
-    });
+      return {
+        id: f.id, u: f.u, n: f.n, v: !!f.v, idx: idx, l: l, c: c, s: s, total: l + c + s,
+        fol: following.has(f.id), isFollower: isFollower,
+      };
+    };
+    const rows = followers.map((f, idx) => mk(f, idx, true));
+    // Senin takip edip seni takip etmeyenler (takipçi listesinde olmayanlar).
+    const followerIds = new Set(followers.map((f) => f.id));
+    const nonFollowers = (store.followingUsers || []).filter((f) => !followerIds.has(f.id))
+      .map((f, idx) => mk(f, idx, false));
     const active = rows.filter((x) => x.total > 0 && !store.done[x.id]);
     return {
-      rows: rows, postsUsed: postsUsed, storiesUsed: o.stories ? stories.length : 0,
+      rows: rows, nonFollowers: nonFollowers, postsUsed: postsUsed, storiesUsed: o.stories ? stories.length : 0,
       // Seçilen dönem incelenen en eski gönderiden daha geriye gidiyorsa uyarmak için:
       coverageShort: !!(days && postsTotal && oldest > since && postsTotal >= ((store.lastOpts && store.lastOpts.posts) || 0)),
       oldest: oldest === Infinity ? 0 : oldest,
@@ -543,6 +566,7 @@
     pruneThemed();
     for (const [el, prop, tpl] of themed) el.style[prop] = fill(tpl);
     if (ui.panel) ui.panel.style.colorScheme = T.scheme;
+    if (ui.tabs && lastRows) updateTabs();
   }
 
   // ---------- Arayüz ----------
@@ -620,18 +644,35 @@
   ui.selInfo = h('span', { style: { fontSize: '12px', color: '@muted' } });
   ui.list = h('div', { style: { borderTop: '1px solid @line', marginTop: '6px' } });
   const row = (...kids) => h('div', { style: { display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center', margin: '6px 0' } }, ...kids);
+
+  // Liste sekmeleri
+  const VIEWS = {
+    followers: { label: 'Takipçilerim', hint: 'Seni takip eden herkes, etkileşimleriyle.' },
+    notFollowedBack: { label: 'Takip etmediklerim', hint: 'Seni takip eden ama senin takip etmediğin kişiler.' },
+    nonFollowers: { label: 'Beni takip etmeyenler', hint: 'Senin takip ettiğin ama seni takip etmeyen kişiler.' },
+  };
+  ui.tabs = {};
+  for (const key of Object.keys(VIEWS)) {
+    ui.tabs[key] = h('button', { onclick: () => setView(key), style: {
+      padding: '6px 10px', borderRadius: '999px', cursor: 'pointer', fontSize: '12px', fontWeight: '600',
+      border: '1px solid @border', background: '@btnBg', color: '@text',
+    } }, VIEWS[key].label);
+  }
+  ui.viewHint = h('div', { style: { fontSize: '11px', color: '@faint', margin: '2px 0 4px' } });
+  ui.unfollowLabel = h('label', { style: { fontSize: '12px', display: 'block' } }, ui.cbUnfollow, 'Takip ettiklerimi takipten de çıkar');
+  ui.actionNote = h('div', { style: { fontSize: '11px', color: '@faint', marginTop: '4px', lineHeight: '1.4' } });
+  ui.hideDoneLabel = h('span', null, 'Çıkarılanları gizle');
+
   ui.resultsBox = h('div', { style: { display: 'none' } },
     row(h('span', { style: { fontSize: '13px' } }, 'Dönem:'), ui.period),
     ui.summary,
+    row(ui.tabs.followers, ui.tabs.notFollowedBack, ui.tabs.nonFollowers),
+    ui.viewHint,
     row(ui.filter, ui.search),
     row(btn('Görünenleri seç', selectVisible), btn('Seçimi kaldır', () => { selected.clear(); renderList(); }), ui.selInfo),
     h('div', { style: { border: '1px solid @line', borderRadius: '8px', padding: '8px 10px', margin: '6px 0' } },
-      row(ui.removeBtn),
-      h('label', { style: { fontSize: '12px', display: 'block' } }, ui.cbUnfollow, 'Takip ettiklerimi takipten de çıkar'),
-      h('div', { style: { fontSize: '11px', color: '@faint', marginTop: '4px', lineHeight: '1.4' } },
-        'Hesabını korumak için kişiler arası 12–25 sn beklenir, her 10 kişide 4 dk mola verilir ve günde en fazla ' +
-        REMOVE.DAILY_LIMIT + ' kişi çıkarılır. Çıkarılan kişiye bildirim gitmez.')),
-    h('label', { style: { fontSize: '12px', display: 'block', margin: '6px 0' } }, ui.hideDone, 'Çıkarılanları gizle'),
+      row(ui.removeBtn), ui.unfollowLabel, ui.actionNote),
+    h('label', { style: { fontSize: '12px', display: 'block', margin: '6px 0' } }, ui.hideDone, ui.hideDoneLabel),
     row(btn('Listeyi kopyala', copyList), btn('CSV indir', downloadCsv)),
     ui.list);
 
@@ -791,12 +832,54 @@
   }
 
   let lastRows = [];
+  let lastNonFollowers = [];
+  let view = 'followers';
   const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0) + '%';
+
+  function viewRows() {
+    if (view === 'nonFollowers') return lastNonFollowers;
+    if (view === 'notFollowedBack') return lastRows.filter((x) => !x.fol);
+    return lastRows;
+  }
+
+  function setView(key) {
+    if (running || view === key) return;
+    view = key;
+    selected.clear();
+    // Yeni sekmelerde herkesi göster; takipçilerde varsayılan "etkileşime girenler".
+    ui.filter.value = key === 'followers' ? 'active' : 'all';
+    renderList();
+  }
+
+  function updateTabs() {
+    const counts = {
+      followers: lastRows.filter((x) => !isDone(x)).length,
+      notFollowedBack: lastRows.filter((x) => !x.fol && !isDone(x)).length,
+      nonFollowers: lastNonFollowers.filter((x) => !isDone(x)).length,
+    };
+    for (const key of Object.keys(VIEWS)) {
+      const on = key === view;
+      const b = ui.tabs[key];
+      b.textContent = VIEWS[key].label + ' (' + counts[key] + ')';
+      b.style.background = fill(on ? '@accent' : '@btnBg');
+      b.style.color = on ? '#ffffff' : fill('@text');
+      b.style.borderColor = fill(on ? '@accent' : '@border');
+    }
+    ui.viewHint.textContent = VIEWS[view].hint +
+      (view === 'nonFollowers' && !store.followingUsers ? ' Bu liste için Başlat\'a basıp bir kez tara.' : '');
+    const unfollowMode = view === 'nonFollowers';
+    ui.unfollowLabel.style.display = view === 'followers' ? 'block' : 'none';
+    ui.hideDoneLabel.textContent = unfollowMode ? 'Takipten çıkarılanları gizle' : 'Çıkarılanları gizle';
+    ui.actionNote.textContent = 'Hesabını korumak için kişiler arası 12–25 sn beklenir, her 10 kişide 4 dk mola verilir ve günde en fazla ' +
+      REMOVE.DAILY_LIMIT + ' işlem yapılır. Karşı tarafa bildirim gitmez.';
+  }
+
   function renderResults() {
     if (!store.followers || !store.followers.length) { ui.resultsBox.style.display = 'none'; return; }
     const days = Number(ui.period.value);
     const r = compute(days);
     lastRows = r.rows;
+    lastNonFollowers = r.nonFollowers;
     const current = r.rows.filter((x) => !store.done[x.id]);
     const zero = current.filter((x) => x.total === 0).length;
     const one = current.filter((x) => x.total === 1).length;
@@ -828,33 +911,57 @@
     const f = ui.filter.value;
     const q = ui.search.value.trim().toLowerCase();
     const activeView = f === 'active';
-    return lastRows
+    return viewRows()
       .filter((x) => f === 'all' || (activeView ? x.total > 0 : x.total <= Number(f)))
-      .filter((x) => !ui.hideDone.checked || !store.done[x.id])
+      .filter((x) => !ui.hideDone.checked || !isDone(x))
       .filter((x) => !q || x.u.toLowerCase().includes(q) || x.n.toLowerCase().includes(q))
       // "Etkileşime girenler": en çok etkileşim önce. Diğerleri: en az önce; eşitse en eski takipçi önce.
       .sort((a, b) => (activeView ? b.total - a.total : a.total - b.total) || b.idx - a.idx);
   }
 
   function selectVisible() {
-    filteredRows().forEach((x) => { if (!store.done[x.id]) selected.add(x.id); });
+    filteredRows().forEach((x) => { if (!isDone(x)) selected.add(x.id); });
     renderList();
   }
 
   function updateSelInfo() {
-    const n = lastRows.filter((x) => selected.has(x.id) && !store.done[x.id]).length;
-    ui.selInfo.textContent = n + ' kişi seçili · bugün çıkarılan: ' + removedToday() + ' / ' + REMOVE.DAILY_LIMIT;
-    ui.removeBtn.textContent = n ? 'Seçilen ' + n + ' kişiyi takipçilerimden çıkar' : 'Seçilenleri takipçilerimden çıkar';
+    const n = viewRows().filter((x) => selected.has(x.id) && !isDone(x)).length;
+    ui.selInfo.textContent = n + ' kişi seçili · bugünkü işlem: ' + removedToday() + ' / ' + REMOVE.DAILY_LIMIT;
+    const action = view === 'nonFollowers' ? 'takipten çıkar' : 'takipçilerimden çıkar';
+    ui.removeBtn.textContent = n ? 'Seçilen ' + n + ' kişiyi ' + action : 'Seçilenleri ' + action;
   }
 
   const badge = (text, bg, fg) => h('span', { style: {
     fontSize: '10px', background: bg, color: fg, borderRadius: '4px', padding: '1px 4px', marginLeft: '6px',
   } }, text);
 
+  // Onaylı hesap rozeti (mavi tik)
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  function verifiedTick() {
+    const svg = document.createElementNS(SVG_NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('width', '13');
+    svg.setAttribute('height', '13');
+    svg.setAttribute('aria-label', 'Onaylı hesap');
+    Object.assign(svg.style, { marginLeft: '4px', verticalAlign: '-2px', flex: '0 0 auto' });
+    const t = document.createElementNS(SVG_NS, 'title');
+    t.textContent = 'Onaylı hesap';
+    const c = document.createElementNS(SVG_NS, 'circle');
+    c.setAttribute('cx', '12'); c.setAttribute('cy', '12'); c.setAttribute('r', '11');
+    c.setAttribute('fill', '#0095f6');
+    const p = document.createElementNS(SVG_NS, 'path');
+    p.setAttribute('d', 'M7 12.5l3.2 3.2L17 9');
+    p.setAttribute('fill', 'none'); p.setAttribute('stroke', '#ffffff');
+    p.setAttribute('stroke-width', '2.4'); p.setAttribute('stroke-linecap', 'round'); p.setAttribute('stroke-linejoin', 'round');
+    svg.append(t, c, p);
+    return svg;
+  }
+
   function renderList() {
     const rows = filteredRows();
     ui.list.textContent = '';
     pruneThemed();
+    updateTabs();
     updateSelInfo();
     if (!rows.length) {
       ui.list.append(h('div', { style: { fontSize: '13px', color: '@faint', padding: '10px 0' } }, 'Bu filtrede kimse yok.'));
@@ -864,9 +971,10 @@
       rows.length + ' kişi  ·  ❤ beğeni  💬 yorum  👁 hikâye  ·  kutu = seç'));
     const newest = Math.max(10, Math.round(lastRows.length * 0.03)); // en yeni ~%3
     for (const x of rows) {
-      const done = !!store.done[x.id];
+      const done = isDone(x);
+      const doneText = x.isFollower ? 'çıkarıldı' : 'takipten çıkarıldı';
       const check = h('input', { type: 'checkbox', checked: !done && selected.has(x.id), disabled: done,
-        title: done ? 'Çıkarıldı' : 'Seç', onchange: (e) => {
+        title: done ? doneText : 'Seç', onchange: (e) => {
           if (e.target.checked) selected.add(x.id); else selected.delete(x.id);
           updateSelInfo();
         } });
@@ -881,9 +989,10 @@
         check,
         h('div', { style: { flex: '1', minWidth: '0', overflow: 'hidden' } },
           link,
-          done ? badge('çıkarıldı', '@line', '@muted') : null,
-          !done && x.fol ? badge('takip ediyorsun', '@line', '@muted') : null,
-          !done && x.idx < newest ? badge('yeni', '@badgeBg', '@badgeFg') : null,
+          x.v ? verifiedTick() : null,
+          done ? badge(doneText, '@line', '@muted') : null,
+          !done && x.isFollower && x.fol && view === 'followers' ? badge('takip ediyorsun', '@line', '@muted') : null,
+          !done && x.isFollower && x.idx < newest ? badge('yeni', '@badgeBg', '@badgeFg') : null,
           x.n ? h('div', { style: { fontSize: '11px', color: '@faint', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' } }, x.n) : null),
         h('div', { style: { fontSize: '12px', color: '@muted', whiteSpace: 'nowrap' } },
           '❤' + x.l + ' 💬' + x.c + ' 👁' + x.s));
@@ -892,7 +1001,7 @@
   }
 
   async function copyList() {
-    const text = filteredRows().filter((x) => !store.done[x.id]).map((x) => x.u).join('\n');
+    const text = filteredRows().filter((x) => !isDone(x)).map((x) => x.u).join('\n');
     try { await navigator.clipboard.writeText(text); }
     catch (e) {
       const ta = h('textarea', { value: text, style: { position: 'fixed', opacity: '0' } });
@@ -903,9 +1012,9 @@
 
   function downloadCsv() {
     const q = (v) => '"' + String(v).replace(/"/g, '""') + '"';
-    const lines = [['kullanici_adi', 'isim', 'begeni', 'yorum', 'hikaye_izleme', 'toplam', 'takip_ediyorsun', 'cikarildi', 'profil'].join(',')];
+    const lines = [['kullanici_adi', 'isim', 'begeni', 'yorum', 'hikaye_izleme', 'toplam', 'onayli', 'seni_takip_ediyor', 'takip_ediyorsun', 'islem_yapildi', 'profil'].join(',')];
     for (const x of filteredRows()) {
-      lines.push([q(x.u), q(x.n), x.l, x.c, x.s, x.total, x.fol ? 'evet' : '', store.done[x.id] ? 'evet' : '', q('https://www.instagram.com/' + x.u + '/')].join(','));
+      lines.push([q(x.u), q(x.n), x.l, x.c, x.s, x.total, x.v ? 'evet' : '', x.isFollower ? 'evet' : '', x.fol ? 'evet' : '', isDone(x) ? 'evet' : '', q('https://www.instagram.com/' + x.u + '/')].join(','));
     }
     const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
     const a = h('a', { href: URL.createObjectURL(blob), download: 'takipci-etkilesim.csv' });

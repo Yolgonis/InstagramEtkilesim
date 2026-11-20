@@ -29,6 +29,8 @@ Telefonda çalışmaz, çünkü mobil tarayıcılarda konsol yok.
 - Her takipçi için ❤ beğeni, 💬 yorum ve 👁 hikâye sayısını gösterir. **Etkileşime girenler** listesi tarama sırasında canlı güncellenir.
 - **Dönem özeti:** "Son 30 günde 214 takipçin seninle etkileşime girdi (%21)" gibi. Seçenekler: son 7, 30, 90 gün veya tüm veri.
 - "Hiç etkileşim yok", "en fazla 1" gibi filtreler, arama, kullanıcı adlarını kopyalama ve CSV dışa aktarma sunar.
+- **Sekmeler:** *Takipçilerim*, *Takip etmediklerim* (seni takip eden ama senin takip etmediklerin) ve *Beni takip etmeyenler* (takip ettiğin ama seni takip etmeyenler). Onaylı hesaplar mavi tikle gösterilir.
+- **Beni takip etmeyenleri takipten çıkarma:** O sekmede seçtiğin kişileri aynı hız korumasıyla takipten çıkarır.
 - **Takipçi çıkarma:** Kişileri seç (ya da "Görünenleri seç"), **Seçilenleri takipçilerimden çıkar**'a bas. İstersen takip ettiklerini takipten de çıkarır. Kişiler arası 12–25 sn bekler, her 10 kişide 4 dk mola verir, günde en fazla 100 kişi çıkarır.
 
 ## Gizlilik ve güvenlik
