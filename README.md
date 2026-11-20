@@ -2,7 +2,7 @@
 
 ![Lisans: MIT](https://img.shields.io/badge/lisans-MIT-blue)
 
-Seni takip eden ama **gönderilerini beğenmeyen, yorum yapmayan ve hikâyelerini izlemeyen** kişileri bulan küçük bir araç. Tarayıcıda çalışır, kurulum ya da indirme gerektirmez.
+Takipçilerinden **kimlerin seninle etkileşimde olduğunu** gösteren küçük bir araç: kimler gönderilerini beğeniyor, yorum yapıyor, hikâyelerini izliyor. Liste tarama sırasında canlı dolar. Son 7/30/90 günde kaç kişiyle etkileşimde olduğunu özetler. İstersen en az etkileşimdeki kişileri takipçilerinden çıkarmanı sağlar. Tarayıcıda çalışır, kurulum ya da indirme gerektirmez.
 
 **👉 Kullanmak için: https://Yolgonis.github.io/InstagramEtkilesim/**
 
@@ -26,13 +26,15 @@ Telefonda çalışmaz, çünkü mobil tarayıcılarda konsol yok.
 - Takipçi listeni çeker.
 - Son *N* gönderinin (varsayılan 15) **beğenenlerini** ve **yorum yapanlarını** çeker.
 - O an yayında olan **hikâyelerin izleyenlerini** çeker ve kaydeder. Instagram izleyen listesini yalnızca kısa bir süre gösterdiği için veriler her çalıştırmada birikir.
-- Her takipçi için ❤ beğeni, 💬 yorum ve 👁 hikâye sayısını gösterir.
-- "Hiç etkileşim yok", "en fazla 1" gibi filtreler, arama, "temizledim" işareti, kullanıcı adlarını kopyalama ve CSV dışa aktarma sunar.
+- Her takipçi için ❤ beğeni, 💬 yorum ve 👁 hikâye sayısını gösterir. **Etkileşime girenler** listesi tarama sırasında canlı güncellenir.
+- **Dönem özeti:** "Son 30 günde 214 takipçin seninle etkileşime girdi (%21)" gibi. Seçenekler: son 7, 30, 90 gün veya tüm veri.
+- "Hiç etkileşim yok", "en fazla 1" gibi filtreler, arama, kullanıcı adlarını kopyalama ve CSV dışa aktarma sunar.
+- **Takipçi çıkarma:** Kişileri seç (ya da "Görünenleri seç"), **Seçilenleri takipçilerimden çıkar**'a bas. İstersen takip ettiklerini takipten de çıkarır. Kişiler arası 12–25 sn bekler, her 10 kişide 4 dk mola verir, günde en fazla 100 kişi çıkarır.
 
 ## Gizlilik ve güvenlik
 
 - **Şifre istemez.** Instagram'da zaten açık olan oturumunla çalışır.
-- **Sadece okur.** Kimseyi takipten çıkarmaz, silmez, mesaj atmaz.
+- **Tarama sadece okur.** Takipçi çıkarma yalnızca sen seçip onaylarsan yapılır. Hiç kimseye mesaj atmaz.
 - **Veriler sende kalır.** Hiçbir sunucuya gönderilmez, yalnızca tarayıcının `localStorage` alanında saklanır. Paneldeki "Kayıtlı tüm verileri sil" bağlantısıyla silebilirsin.
 - Kodun tamamı [`src/instagram-etkilesim.js`](src/instagram-etkilesim.js) dosyasında, okunabilir halde duruyor.
 
@@ -40,7 +42,7 @@ Telefonda çalışmaz, çünkü mobil tarayıcılarda konsol yok.
 
 - Hikâye attıktan sonraki **24 saat içinde** aracı tekrar çalıştır. 2–3 hafta sonra liste çok daha güvenilir olur.
 - **"yeni"** etiketli kişiler seni yakın zamanda takip etmiş olabilir.
-- Takipçileri **elle** çıkar ve günde **50–100 kişiyi geçme**.
+- Çok sayıda kişiyi çıkaracaksan bunu birkaç güne yay. Takipçi çıkarma, Instagram'ın en sıkı izlediği işlemlerden biri.
 
 ## ⚠️ Uyarılar
 
@@ -70,7 +72,7 @@ Bu araç Instagram veya Meta ile bağlantılı değildir, onlar tarafından onay
 
 ## English
 
-A small browser tool that lists Instagram followers who **don't like your posts, don't comment and don't watch your stories**. It only reads data and never removes anyone. It doesn't ask for your password, and all data stays in your browser.
+A small browser tool that shows which Instagram followers **interact with you** by liking your posts, commenting or watching your stories. The list updates live while the scan runs. It also summarizes engagement for the last 7, 30 or 90 days. If you want, it can remove the least engaged followers you select. Removals are throttled and capped at 100 per day. It doesn't ask for your password, and all data stays in your browser.
 
 **Usage:** Log in to instagram.com on a desktop browser, open the [tool page](https://Yolgonis.github.io/InstagramEtkilesim/), click **Kodu kopyala** (Copy code), paste it into the developer console (`F12` → Console) and press Enter. Then click **Başlat** (Start) in the panel that appears.
 
