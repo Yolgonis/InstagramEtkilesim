@@ -1,5 +1,5 @@
 /*!
- * Instagram Etkileşim Analizi, v0.4.1
+ * Instagram Etkileşim Analizi, v0.4.2
  * Seni takip eden ama gönderilerini beğenmeyen, yorum yapmayan ve
  * hikâyelerini izlemeyen kişileri listeler.
  *
@@ -13,7 +13,7 @@
 (async () => {
   'use strict';
 
-  const VERSION = '0.4.1';
+  const VERSION = '0.4.2';
   const CONFIG = {
     DELAY_MIN_MS: 2000,     // istekler arası en az bekleme
     DELAY_MAX_MS: 4500,     // istekler arası en fazla bekleme
@@ -579,12 +579,16 @@
     for (let i = themed.length - 1; i >= 0; i--) if (!themed[i][0].isConnected) themed.splice(i, 1);
   }
   const fill = (tpl) => tpl.replace(/@(\w+)/g, (_, k) => T[k] || '');
+  // Yalnızca tema gerçekten değiştiğinde çalışır. Aksi halde Instagram'ın kendi sayfa izleyicisiyle
+  // birbirini tetikleyen sonsuz bir döngü oluşup sekmeyi dondurabiliyor (v0.4.0/0.4.1 hatası).
   function applyTheme() {
-    T = THEMES[detectDark() ? 'dark' : 'light'];
+    const next = THEMES[detectDark() ? 'dark' : 'light'];
+    if (next === T) return;
+    T = next;
     pruneThemed();
     for (const [el, prop, tpl] of themed) el.style[prop] = fill(tpl);
     if (ui.panel) ui.panel.style.colorScheme = T.scheme;
-    if (ui.tabs && lastRows) updateTabs();
+    if (ui.tabs) updateTabs();
   }
 
   // ---------- Arayüz ----------
@@ -893,19 +897,21 @@
     for (const key of Object.keys(VIEWS)) {
       const on = key === view;
       const b = ui.tabs[key];
-      b.textContent = VIEWS[key].label + ' (' + counts[key] + ')';
+      setText(b, VIEWS[key].label + ' (' + counts[key] + ')');
       b.style.background = fill(on ? '@accent' : '@btnBg');
       b.style.color = on ? '#ffffff' : fill('@text');
       b.style.borderColor = fill(on ? '@accent' : '@border');
     }
-    ui.viewHint.textContent = VIEWS[view].hint +
-      (view === 'nonFollowers' && !store.followingUsers ? ' Bu liste için Başlat\'a basıp bir kez tara.' : '');
+    setText(ui.viewHint, VIEWS[view].hint +
+      (view === 'nonFollowers' && !store.followingUsers ? ' Bu liste için Başlat\'a basıp bir kez tara.' : ''));
     const unfollowMode = view === 'nonFollowers';
     ui.unfollowLabel.style.display = view === 'followers' ? 'block' : 'none';
-    ui.hideDoneLabel.textContent = unfollowMode ? 'Takipten çıkarılanları gizle' : 'Çıkarılanları gizle';
-    ui.actionNote.textContent = 'Hesabını korumak için kişiler arası 12–25 sn beklenir, her 10 kişide 4 dk mola verilir ve günde en fazla ' +
-      REMOVE.DAILY_LIMIT + ' işlem yapılır. Karşı tarafa bildirim gitmez.';
+    setText(ui.hideDoneLabel, unfollowMode ? 'Takipten çıkarılanları gizle' : 'Çıkarılanları gizle');
+    setText(ui.actionNote, 'Hesabını korumak için kişiler arası 12–25 sn beklenir, her 10 kişide 4 dk mola verilir ve günde en fazla ' +
+      REMOVE.DAILY_LIMIT + ' işlem yapılır. Karşı tarafa bildirim gitmez.');
   }
+  // Metin aynıysa DOM'a dokunma (gereksiz değişiklik, sayfadaki izleyicileri tetiklemesin).
+  function setText(el, text) { if (el.textContent !== text) el.textContent = text; }
 
   function renderResults() {
     if (!store.followers || !store.followers.length) { ui.resultsBox.style.display = 'none'; return; }

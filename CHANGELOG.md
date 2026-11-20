@@ -1,5 +1,9 @@
 # Değişiklikler
 
+## 0.4.2 (2026-11-20)
+
+- Düzeltme: v0.4.0'dan beri kod yapıştırılınca Instagram sekmesi donuyordu. Tema güncellemesi sekme yazılarını her seferinde yeniden yazıyor, Instagram'ın sayfa izleyicisi de buna tepki verip temayı tekrar tetikliyordu. Bu sonsuz döngüye yol açıyordu. Artık tema yalnızca gerçekten değişince güncelleniyor, aynı metin tekrar yazılmıyor.
+
 ## 0.4.1 (2026-11-20)
 
 - Düzeltme: Kod aynı sekmede ikinci kez yapıştırılınca (önceki panel kapanmış, Instagram tarafından silinmiş ya da eski sürüm açıkken) hiçbir şey olmuyordu. Artık eski panel kaldırılıp yenisi açılıyor. Aynı sürüm zaten açıksa öne getirilip kısa süre vurgulanıyor.
