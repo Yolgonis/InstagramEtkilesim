@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Etkileşim Analizi</title>
+<meta name="description" content="Instagram'da seni takip edip gönderilerini beğenmeyen, yorum yapmayan ve hikâyelerini izlemeyen takipçileri bul.">
+<style>
+  :root { --bg:#fafafa; --card:#fff; --text:#262626; --muted:#737373; --line:#dbdbdb; --accent:#0095f6; --warn-bg:#fff7e6; --warn-line:#f5c26b; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#121212; --card:#1e1e1e; --text:#f1f1f1; --muted:#a8a8a8; --line:#333; --accent:#3aa6ff; --warn-bg:#2b2212; --warn-line:#7a5a1e; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }
+  main { max-width:720px; margin:0 auto; padding:32px 16px 64px; }
+  h1 { font-size:26px; margin:0 0 4px; }
+  .lead { color:var(--muted); margin:0 0 24px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:18px 20px; margin:16px 0; }
+  h2 { font-size:18px; margin:0 0 10px; }
+  ol, ul { padding-left:22px; margin:0; }
+  li { margin:6px 0; }
+  kbd, code { font-family:Consolas, monospace; font-size:14px; background:var(--bg); border:1px solid var(--line); border-radius:5px; padding:1px 6px; }
+  .warn { background:var(--warn-bg); border-color:var(--warn-line); }
+  button { font:inherit; font-weight:600; background:var(--accent); color:#fff; border:0; border-radius:8px; padding:12px 22px; cursor:pointer; }
+  .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-top:14px; }
+  #ok { color:var(--muted); font-size:14px; }
+  details summary { cursor:pointer; color:var(--muted); font-size:14px; margin-top:14px; }
+  textarea { width:100%; height:260px; margin-top:8px; font:12px/1.4 Consolas, monospace; background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:8px; padding:8px; }
+  footer { color:var(--muted); font-size:13px; margin-top:32px; }
+  footer a { color:var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Instagram Etkileşim Analizi</h1>
+  <p class="lead">Seni takip edip gönderilerini beğenmeyen, yorum yapmayan ve hikâyelerini izlemeyen kişileri listeler. Kurulum gerekmez, tarayıcında çalışır.</p>
+
+  <div class="card">
+    <h2>Nasıl kullanılır?</h2>
+    <ol>
+      <li><b>Bilgisayarda</b> Chrome veya Edge ile <b>instagram.com</b>'a gir ve hesabına giriş yap. Telefonda çalışmaz.</li>
+      <li>Aşağıdaki <b>Kodu kopyala</b> butonuna bas.</li>
+      <li>instagram.com sekmesine dön ve konsolu aç: <kbd>F12</kbd> → <b>Console</b> sekmesi. (Kısayol: Windows'ta <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>J</kbd>, Mac'te <kbd>⌘</kbd>+<kbd>⌥</kbd>+<kbd>J</kbd>.)</li>
+      <li>Kodu yapıştır (<kbd>Ctrl</kbd>+<kbd>V</kbd>) ve <kbd>Enter</kbd>'a bas.</li>
+      <li>Sayfanın sağında bir panel açılır. <b>Başlat</b>'a bas ve birkaç dakika bekle. Bu sırada sekmeyi kapatma.</li>
+    </ol>
+    <div class="row">
+      <button id="copy">Kodu kopyala</button>
+      <span id="ok"></span>
+    </div>
+    <details>
+      <summary>Kodu görmek istersen</summary>
+      <textarea id="code" readonly spellcheck="false">__SCRIPT__</textarea>
+    </details>
+  </div>
+
+  <div class="card">
+    <h2>Güvenli mi?</h2>
+    <ul>
+      <li><b>Şifre istemez.</b> Kod, Instagram'da zaten açık olan oturumunla çalışır.</li>
+      <li><b>Sadece okur.</b> Kimseyi takipten çıkarmaz, silmez, mesaj atmaz.</li>
+      <li><b>Veriler sende kalır.</b> Hiçbir sunucuya gönderilmez, sadece senin tarayıcında saklanır.</li>
+      <li><b>Açık kaynak.</b> Kodun tamamı <a href="__REPO_URL__">GitHub'da</a> herkesin incelemesine açık.</li>
+    </ul>
+  </div>
+
+  <div class="card warn">
+    <h2>Konsolda göreceğin iki uyarı</h2>
+    <ul>
+      <li>Chrome ilk seferde yapıştırmaya izin vermeyebilir. O zaman konsola <code>allow pasting</code> yaz (Türkçe Chrome'da <code>yapıştırmaya izin ver</code>), Enter'a bas, sonra kodu tekrar yapıştır.</li>
+      <li>Instagram konsolda kırmızı, büyük bir "Dur!" uyarısı gösterir. Bu, insanları tanımadıkları kodları yapıştırmaya karşı uyarmak için var ve haklı bir uyarı. Konsola yalnızca kaynağını bildiğin kodu yapıştır.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>En iyi sonuç için</h2>
+    <ul>
+      <li><b>Hikâye izleyenleri</b> sadece hikâye yayındayken alınabilir. Hikâye attıktan sonraki 24 saat içinde kodu tekrar çalıştır. Veriler birikir, 2-3 hafta sonra liste çok daha güvenilir olur.</li>
+      <li>Listede <b>"yeni"</b> etiketi olanlar seni yakın zamanda takip etmiş olabilir. Henüz etkileşime girme fırsatları olmamış olabilir.</li>
+      <li>Panelde her kişinin yanındaki kutuyu işaretleyerek kimleri temizlediğini takip edebilirsin.</li>
+    </ul>
+  </div>
+
+  <div class="card warn">
+    <h2>Dikkat</h2>
+    <ul>
+      <li>Bu araç Instagram'ın resmi olmayan iç API'sini kullanır. Bu tür araçlar Instagram'ın kullanım koşullarında gri bir alanda kalır. Kod yavaş ve dikkatli çalışacak şekilde yazıldı. Yine de Instagram "bir süre sonra tekrar dene" derse kod kendiliğinden durur. O zaman birkaç saat bekle.</li>
+      <li>Kodu günde birkaç kereden fazla çalıştırma.</li>
+      <li>Takipçileri <b>elle</b> çıkar ve günde <b>50–100 kişiyi geçme</b>. Kısa sürede yüzlerce kişiyi çıkarmak hesabın kısıtlanmasına yol açabilir.</li>
+    </ul>
+  </div>
+
+  <footer>
+    Bu araç Instagram veya Meta ile bağlantılı değildir, onlar tarafından onaylanmamıştır. Kullanım riski sana aittir.
+    · <a href="__REPO_URL__">Kaynak kodu</a> · MIT lisansı
+  </footer>
+</main>
+<script>
+  document.getElementById('copy').addEventListener('click', async () => {
+    const ta = document.getElementById('code');
+    const ok = document.getElementById('ok');
+    try { await navigator.clipboard.writeText(ta.value); }
+    catch (e) { ta.closest('details').open = true; ta.select(); document.execCommand('copy'); }
+    ok.textContent = 'Kopyalandı. Şimdi instagram.com sekmesine geç.';
+  });
+</script>
+</body>
+</html>
