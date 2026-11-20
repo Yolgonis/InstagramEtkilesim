@@ -1,5 +1,5 @@
 /*!
- * Instagram Etkileşim Analizi, v0.5.1
+ * Instagram Etkileşim Analizi, v0.5.2
  * Seni takip eden ama gönderilerini beğenmeyen, yorum yapmayan ve
  * hikâyelerini izlemeyen kişileri listeler.
  *
@@ -13,7 +13,7 @@
 (async () => {
   'use strict';
 
-  const VERSION = '0.5.1';
+  const VERSION = '0.5.2';
   const CONFIG = {
     DELAY_MIN_MS: 2000,     // istekler arası en az bekleme
     DELAY_MAX_MS: 4500,     // istekler arası en fazla bekleme
@@ -23,7 +23,6 @@
     REFRESH_POST_DAYS: 14,  // bundan yeni gönderilerin verisi her çalıştırmada yenilenir
     MAX_COMMENT_PAGES: 10,
     MAX_VIEWER_PAGES: 20,
-    MAX_DM_PAGES: 25,       // mesaj kutusunda en fazla 25 × 20 = 500 sohbet
     APP_ID: '936619743392459',
   };
 
@@ -71,6 +70,7 @@
   let store;
   try { store = Object.assign(emptyStore(), JSON.parse(localStorage.getItem(STORE_KEY)) || {}); }
   catch (e) { store = emptyStore(); }
+  if (store.dms) { delete store.dms; try { localStorage.setItem(STORE_KEY, JSON.stringify(store)); } catch (e) { /* yok say */ } } // v0.5.0 kalıntısı
   let following = new Set(store.following || []); // senin takip ettiklerin
   const selected = new Set();                      // çıkarılmak üzere seçilenler (kaydedilmez)
   // Tarama sırasında listeyi canlı güncelle (çok sık çizmemek için en fazla saniyede bir).
@@ -115,7 +115,7 @@
 
   // post: true ise POST isteği atar (takipçi çıkarma gibi işlemler). İşlemlerin kendi bekleme düzeni
   // olduğu için okuma isteklerinin bekleme/mola sayacına karışmazlar.
-  async function api(path, post, base) {
+  async function api(path, post) {
     if (stopped) throw new StopError('Durduruldu.');
     if (!post) {
       reqCount++;
@@ -134,15 +134,13 @@
         'X-Requested-With': 'XMLHttpRequest',
       };
       if (post) headers['Content-Type'] = 'application/x-www-form-urlencoded';
-      res = await fetch((base || 'https://www.instagram.com') + '/api/v1/' + path, {
+      res = await fetch('https://www.instagram.com/api/v1/' + path, {
         method: post ? 'POST' : 'GET',
         credentials: 'include',
         headers: headers,
         body: post ? '' : undefined,
       });
     } catch (e) {
-      // Yedek adreste (i.instagram.com) ağ/CORS hatası tüm analizi durdurmasın.
-      if (base) throw new Error('Ağ hatası [' + base + '/api/v1/' + path.split('?')[0] + ']: ' + e.message);
       throw new StopError('Ağ hatası: ' + e.message);
     }
     const text = await res.text();
@@ -266,42 +264,6 @@
       pages++;
     } while (maxId && pages < CONFIG.MAX_VIEWER_PAGES);
     return [...ids];
-  }
-
-  // Mesaj kutusundaki birebir sohbetler: kişi kimliği -> son mesajlaşma zamanı (ms).
-  // Grup sohbetleri sayılmaz. Mesaj içerikleri okunmaz ve kaydedilmez.
-  async function fetchDirectThreads() {
-    const out = {};
-    let cursor = null;
-    let pages = 0;
-    // Önce www.instagram.com, o adres yoksa (HTTP 404) Instagram web'in de kullandığı i.instagram.com denenir.
-    const bases = ['https://www.instagram.com', 'https://i.instagram.com'];
-    let b = 0;
-    for (;;) {
-      const path = 'direct_v2/inbox/?persistentBadging=true&folder=&limit=20&thread_message_limit=1' +
-        (cursor ? '&cursor=' + encodeURIComponent(cursor) : '');
-      let d;
-      try {
-        d = await api(path, false, bases[b]);
-      } catch (e) {
-        if (e instanceof StopError || pages > 0 || b >= bases.length - 1) throw e;
-        b++;
-        continue;
-      }
-      const inbox = d.inbox || {};
-      (inbox.threads || []).forEach((th) => {
-        const users = th.users || [];
-        if (th.is_group || users.length !== 1) return;
-        const id = idOf(users[0]);
-        const t = Math.round(Number(th.last_activity_at || 0) / 1000); // mikrosaniye -> ms
-        if (id && (!out[id] || out[id] < t)) out[id] = t;
-      });
-      cursor = inbox.has_older ? inbox.oldest_cursor : null;
-      pages++;
-      setStatus('Mesajlar inceleniyor: ' + Object.keys(out).length + ' kişi');
-      if (!cursor || pages >= CONFIG.MAX_DM_PAGES) break;
-    }
-    return out;
   }
 
   // Senin takip ettiğin kişiler ("takip ediyorsun" etiketi, "Beni takip etmeyenler" sekmesi ve takibi bırakma için).
@@ -429,7 +391,6 @@
       likes: ui.cbLikes.checked,
       comments: ui.cbComments.checked,
       stories: ui.cbStories.checked,
-      dms: ui.cbDms.checked,
     };
     store.lastOpts = opts;
     log('— Analiz başladı —');
@@ -458,19 +419,6 @@
       } catch (e) {
         if (e instanceof StopError) throw e;
         log('⚠ Takip ettiklerin alınamadı, devam ediliyor. ' + e.message);
-      }
-
-      if (opts.dms) {
-        log('Mesaj kutusu inceleniyor (yalnızca kiminle mesajlaştığın, içerik okunmaz)…');
-        try {
-          store.dms = await fetchDirectThreads();
-          save();
-          log('✓ ' + Object.keys(store.dms).length + ' kişiyle birebir sohbetin var.');
-          liveRender();
-        } catch (e) {
-          if (e instanceof StopError) throw e;
-          log('⚠ Mesaj listesi alınamadı, mesajlar bu taramada sayılmadı. Instagram bu bilgiyi web tarayıcısına vermiyor olabilir. ' + e.message);
-        }
       }
 
       if (opts.likes || opts.comments) {
@@ -576,13 +524,10 @@
     }
     const stories = Object.values(store.stories).filter((s) => !since || s.t >= since);
     if (o.stories) stories.forEach((s) => (s.viewers || []).forEach((id) => inc(S, id)));
-    // Mesajlaşma: seçilen dönemde son mesajlaşması olan kişi 1 sayılır.
-    const dms = o.dms !== false ? (store.dms || {}) : {};
     const mk = (f, idx, isFollower) => {
       const l = L.get(f.id) || 0, c = C.get(f.id) || 0, s = S.get(f.id) || 0;
-      const m = dms[f.id] && (!since || dms[f.id] >= since) ? 1 : 0;
       return {
-        id: f.id, u: f.u, n: f.n, v: !!f.v, p: f.p || '', idx: idx, l: l, c: c, s: s, m: m, total: l + c + s + m,
+        id: f.id, u: f.u, n: f.n, v: !!f.v, p: f.p || '', idx: idx, l: l, c: c, s: s, total: l + c + s,
         fol: following.has(f.id), isFollower: isFollower,
       };
     };
@@ -602,7 +547,6 @@
         likes: active.filter((x) => x.l).length,
         comments: active.filter((x) => x.c).length,
         stories: active.filter((x) => x.s).length,
-        dms: active.filter((x) => x.m).length,
       },
     };
   }
@@ -699,7 +643,7 @@
     width: '60px', padding: '4px', margin: '0 6px', border: '1px solid @border', borderRadius: '6px',
   } });
   const cb = () => h('input', { type: 'checkbox', checked: true, style: { marginRight: '4px' } });
-  ui.cbLikes = cb(); ui.cbComments = cb(); ui.cbStories = cb(); ui.cbDms = cb();
+  ui.cbLikes = cb(); ui.cbComments = cb(); ui.cbStories = cb();
   ui.startBtn = btn('Başlat', run, true);
   ui.stopBtn = btn('Durdur', () => { stopped = true; if (wakeUp) wakeUp(); setStatus('Durduruluyor…'); });
   ui.stopBtn.disabled = true;
@@ -792,8 +736,7 @@
       blockLabel('Son ', ui.postCount, ' gönderi'),
       blockLabel(ui.cbLikes, 'Beğeniler'),
       blockLabel(ui.cbComments, 'Yorumlar'),
-      blockLabel(ui.cbStories, 'Hikâye izleyenleri'),
-      blockLabel(ui.cbDms, 'Mesajlaştıklarım')),
+      blockLabel(ui.cbStories, 'Hikâye izleyenleri')),
     section('Dışa aktar', h('div', { style: { display: 'flex', gap: '6px', flexWrap: 'wrap' } },
       btn('Listeyi kopyala', copyList), btn('CSV indir', downloadCsv))),
     h('div', { style: { padding: '14px 16px', fontSize: '12px', color: '@muted', lineHeight: '1.5' } },
@@ -968,7 +911,7 @@
         h('b', null, pct(r.active, current.length)), ').'),
       h('div', { style: { color: '@muted' } },
         '❤ ' + r.byType.likes + ' kişi beğendi  ·  💬 ' + r.byType.comments + ' kişi yorum yaptı  ·  👁 ' +
-        r.byType.stories + ' kişi hikâye izledi  ·  ✉ ' + r.byType.dms + ' kişiyle mesajlaştın'),
+        r.byType.stories + ' kişi hikâye izledi'),
       h('div', null, 'Toplam takipçi: ', h('b', null, current.length),
         '  ·  Hiç etkileşim yok: ', h('b', { style: { color: '@danger' } }, zero),
         '  ·  Sadece 1: ', h('b', null, one)),
@@ -1045,7 +988,7 @@
       return;
     }
     ui.list.append(h('div', { style: { fontSize: '12px', color: '@faint', padding: '2px 0', gridColumn: '1 / -1' } },
-      rows.length + ' kişi  ·  ❤ beğeni  💬 yorum  👁 hikâye  ✉ mesaj  ·  seçmek için karta tıkla'));
+      rows.length + ' kişi  ·  ❤ beğeni  💬 yorum  👁 hikâye  ·  seçmek için karta tıkla'));
     const newest = Math.max(10, Math.round(lastRows.length * 0.03)); // en yeni ~%3
     for (const x of rows) {
       const done = isDone(x);
@@ -1076,7 +1019,7 @@
           !done && x.isFollower && x.idx < newest ? badge('yeni', '@badgeBg', '@badgeFg') : null,
           x.n ? h('div', { style: { fontSize: '11px', color: '@faint', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' } }, x.n) : null),
         h('div', { style: { fontSize: '12px', color: '@muted', whiteSpace: 'nowrap' } },
-          '❤' + x.l + ' 💬' + x.c + ' 👁' + x.s + (x.m ? ' ✉' : '')));
+          '❤' + x.l + ' 💬' + x.c + ' 👁' + x.s));
       // Seçili kart mavi çerçeveyle gösterilir; kartın herhangi bir yerine tıklamak seçer.
       function paintSel() {
         item.style.borderColor = fill(!done && isSel() ? '@accent' : '@line');
@@ -1118,9 +1061,9 @@
 
   function downloadCsv() {
     const q = (v) => '"' + String(v).replace(/"/g, '""') + '"';
-    const lines = [['kullanici_adi', 'isim', 'begeni', 'yorum', 'hikaye_izleme', 'mesaj', 'toplam', 'onayli', 'seni_takip_ediyor', 'takip_ediyorsun', 'islem_yapildi', 'profil'].join(',')];
+    const lines = [['kullanici_adi', 'isim', 'begeni', 'yorum', 'hikaye_izleme', 'toplam', 'onayli', 'seni_takip_ediyor', 'takip_ediyorsun', 'islem_yapildi', 'profil'].join(',')];
     for (const x of filteredRows()) {
-      lines.push([q(x.u), q(x.n), x.l, x.c, x.s, x.m, x.total, x.v ? 'evet' : '', x.isFollower ? 'evet' : '', x.fol ? 'evet' : '', isDone(x) ? 'evet' : '', q('https://www.instagram.com/' + x.u + '/')].join(','));
+      lines.push([q(x.u), q(x.n), x.l, x.c, x.s, x.total, x.v ? 'evet' : '', x.isFollower ? 'evet' : '', x.fol ? 'evet' : '', isDone(x) ? 'evet' : '', q('https://www.instagram.com/' + x.u + '/')].join(','));
     }
     const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
     const a = h('a', { href: URL.createObjectURL(blob), download: 'takipci-etkilesim.csv' });

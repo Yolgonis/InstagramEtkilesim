@@ -1,5 +1,9 @@
 # Değişiklikler
 
+## 0.5.2 (2026-11-20)
+
+- Mesajlar etkileşimden çıkarıldı. Instagram mesaj listesini web üzerinden artık vermiyor: www.instagram.com HTTP 404 dönüyor, i.instagram.com'a giden isteği de tarayıcı engelliyor. Önceki taramadan kalan mesaj verisi kayıttan silinir.
+
 ## 0.5.1 (2026-11-20)
 
 - Düzeltme: Yayında hikâye yokken Instagram HTTP 500 döndüğünde analiz duruyordu. Artık uyarı verip bitiriyor.
