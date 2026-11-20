@@ -1,5 +1,5 @@
 /*!
- * Instagram Etkileşim Analizi, v0.5.3
+ * Instagram Etkileşim Analizi, v0.6.0
  * Seni takip eden ama gönderilerini beğenmeyen, yorum yapmayan ve
  * hikâyelerini izlemeyen kişileri listeler.
  *
@@ -13,7 +13,7 @@
 (async () => {
   'use strict';
 
-  const VERSION = '0.5.3';
+  const VERSION = '0.6.0';
   const CONFIG = {
     DELAY_MIN_MS: 2000,     // istekler arası en az bekleme
     DELAY_MAX_MS: 4500,     // istekler arası en fazla bekleme
@@ -115,16 +115,20 @@
 
   // post: true ise POST isteği atar (takipçi çıkarma gibi işlemler). İşlemlerin kendi bekleme düzeni
   // olduğu için okuma isteklerinin bekleme/mola sayacına karışmazlar.
+  // Okuma istekleri arasında bekleme ve düzenli mola.
+  async function throttle() {
+    if (stopped) throw new StopError('Durduruldu.');
+    reqCount++;
+    if (reqCount > 1 && reqCount % CONFIG.PAUSE_EVERY === 0) {
+      setStatus('Instagram\'ı yormamak için kısa mola (' + CONFIG.PAUSE_MS / 1000 + ' sn)…');
+      await wait(CONFIG.PAUSE_MS);
+    }
+    await wait(CONFIG.DELAY_MIN_MS + Math.random() * (CONFIG.DELAY_MAX_MS - CONFIG.DELAY_MIN_MS));
+  }
+
   async function api(path, post) {
     if (stopped) throw new StopError('Durduruldu.');
-    if (!post) {
-      reqCount++;
-      if (reqCount > 1 && reqCount % CONFIG.PAUSE_EVERY === 0) {
-        setStatus('Instagram\'ı yormamak için kısa mola (' + CONFIG.PAUSE_MS / 1000 + ' sn)…');
-        await wait(CONFIG.PAUSE_MS);
-      }
-      await wait(CONFIG.DELAY_MIN_MS + Math.random() * (CONFIG.DELAY_MAX_MS - CONFIG.DELAY_MIN_MS));
-    }
+    if (!post) await throttle();
 
     let res;
     try {
@@ -198,67 +202,226 @@
     return out;
   }
 
-  // Profil bilgisi: toplam gönderi sayısı ve son 12 gönderi. Alınamazsa null.
-  async function fetchProfilePosts() {
-    if (!store.me || !store.me.username) return null;
-    try {
-      const d = await api('users/web_profile_info/?username=' + encodeURIComponent(store.me.username));
-      const m = d && d.data && d.data.user && d.data.user.edge_owner_to_timeline_media;
-      if (!m) return null;
-      const items = (m.edges || []).map((e) => e.node).filter((n) => n && n.id).map((n) => ({
-        pk: String(n.id).split('_')[0],
-        code: n.shortcode || '',
-        taken_at: n.taken_at_timestamp || 0,
-        comment_count: n.edge_media_to_comment ? n.edge_media_to_comment.count : 1,
-      }));
-      return { count: typeof m.count === 'number' ? m.count : null, items: items };
-    } catch (e) {
-      if (e instanceof StopError) throw e;
-      log('⚠ Profil bilgisi alınamadı: ' + e.message);
-      return null;
-    }
-  }
+  // ---------- GraphQL (Instagram web sitesinin kendi kullandığı yol) ----------
+  // Eski gönderi adresleri (feed/user, web_profile_info) Instagram tarafından kapatıldı (HTTP 404).
+  // Web sitesi gönderileri /api/graphql üzerinden "PolarisProfilePostsQuery" ile alıyor. Bu sorgunun
+  // numarası (doc_id) sık değiştiği için her çalıştırmada sayfanın yüklediği kod dosyalarından okunur.
+  const GQL = {
+    POSTS: 'PolarisProfilePostsQuery',
+    // Bilinen son numaralar (en yenisi önce). Sayfadan okunamazsa sırayla denenir.
+    KNOWN_DOC_IDS: { PolarisProfilePostsQuery: ['29434604052831409', '27014165781614298', '29658130283778926'] },
+    // Instagram'ın 2026-11-21'de gönderdiği değerler. Bilinmeyen yeni bir bayrak çıkarsa false gönderilir.
+    PROVIDED_DEFAULTS: {
+      __relay_internal__pv__PolarisMultiCaptionCarouselEnabledrelayprovider: true,
+      __relay_internal__pv__PolarisShortDramaEnabledrelayprovider: true,
+      __relay_internal__pv__PolarisSEOIsCrawlerrelayprovider: false,
+      __relay_internal__pv__PolarisProductTagIndicatorEnabledrelayprovider: false,
+      __relay_internal__pv__PolarisThreadsStyleCommentsEnabledrelayprovider: false,
+      __relay_internal__pv__PolarisReelsRecoDebugOverlayEnabledrelayprovider: false,
+    },
+  };
+  const pageRequire = (name) => {
+    try { return typeof window.require === 'function' ? window.require(name) : null; } catch (e) { return null; }
+  };
 
-  // Gönderiler: önce profil bilgisi (gönderi sayısı + son 12), daha fazlası gerekirse
-  // kullanıcı adıyla ve kimlikle akış adresleri denenir.
-  async function fetchPosts(limit) {
-    const prof = await fetchProfilePosts();
-    if (prof && prof.count === 0) return [];
-    if (prof && prof.items.length && (prof.items.length >= limit || prof.items.length >= prof.count)) {
-      return prof.items.slice(0, limit);
+  // Oturum anahtarları (fb_dtsg, lsd) sayfanın içinde duruyor. Sadece Instagram'a gönderilir, hiçbir yere kaydedilmez.
+  let tokens = null;
+  async function getTokens() {
+    if (tokens) return tokens;
+    const find = (html, name) => {
+      const m = html.match(new RegExp('"' + name + '",\\[\\],\\{"token":"([^"]+)"'));
+      return m ? m[1] : '';
+    };
+    const fromModule = (name) => { const m = pageRequire(name); return m && m.token ? m.token : ''; };
+    let dtsg = fromModule('DTSGInitialData');
+    let lsd = fromModule('LSD');
+    if (!dtsg || !lsd) {
+      const scripts = [...document.querySelectorAll('script:not([src])')].map((s) => s.textContent).join('\n');
+      dtsg = dtsg || find(scripts, 'DTSGInitialData');
+      lsd = lsd || find(scripts, 'LSD');
     }
-    try {
-      const more = await fetchFeedPosts(limit);
-      if (more.length || !prof || !prof.items.length) return more;
-    } catch (e) {
-      if (e instanceof StopError || !prof || !prof.items.length) throw e;
-      log('⚠ ' + prof.items.length + ' gönderiden fazlası alınamadı: ' + e.message);
-    }
-    return prof.items.slice(0, limit);
-  }
-
-  async function fetchFeedPosts(limit) {
-    const items = [];
-    let maxId = null;
-    const routes = [];
-    if (store.me && store.me.username) routes.push((qs) => 'feed/user/' + encodeURIComponent(store.me.username) + '/username/' + qs);
-    routes.push((qs) => 'feed/user/' + USER_ID + '/' + qs);
-    let r = 0;
-    while (items.length < limit) {
-      const qs = '?count=12' + (maxId ? '&max_id=' + encodeURIComponent(maxId) : '');
-      let d;
+    if (!dtsg || !lsd) {
       try {
-        d = await api(routes[r](qs));
-      } catch (e) {
-        if (e instanceof StopError || r >= routes.length - 1 || maxId) throw e;
-        r++; // diğer adresi dene
-        continue;
-      }
-      (d.items || []).forEach((it) => items.push(it));
-      setStatus('Gönderiler alınıyor: ' + Math.min(items.length, limit));
-      if (!d.more_available || !d.next_max_id) break;
-      maxId = d.next_max_id;
+        const html = await (await fetch('https://www.instagram.com/', { credentials: 'include' })).text();
+        dtsg = dtsg || find(html, 'DTSGInitialData');
+        lsd = lsd || find(html, 'LSD');
+      } catch (e) { /* aşağıda hata verilir */ }
     }
+    if (!dtsg) throw new Error('Sayfada oturum anahtarı (fb_dtsg) bulunamadı. Instagram sayfasını yenileyip kodu tekrar yapıştır.');
+    tokens = { dtsg: dtsg, lsd: lsd };
+    return tokens;
+  }
+
+  // Sayfanın yüklediği kod dosyalarında sorgu numarasını ve gerekli bayrakları arar.
+  const docCache = {};
+  async function discoverOperation(op) {
+    if (docCache[op]) return docCache[op];
+    const out = { docId: '', provided: [] };
+    const mod = pageRequire(op + '_instagramRelayOperation');
+    if (typeof mod === 'string' && /^\d+$/.test(mod)) out.docId = mod;
+    const urls = new Set();
+    document.querySelectorAll('script[src]').forEach((s) => urls.add(s.src));
+    try {
+      performance.getEntriesByType('resource').forEach((e) => {
+        if (e.initiatorType === 'script' || /\.js(\?|$)/.test(e.name)) urls.add(e.name);
+      });
+    } catch (e) { /* yok say */ }
+    const reDoc = new RegExp('"' + op + '_instagramRelayOperation",\\[\\],\\(function\\([^)]*\\)\\{[a-z]\\.exports="(\\d+)"');
+    const reParams = new RegExp('name:"' + op + '",operationKind:"query",text:null,providedVariables:\\{([^}]*)\\}');
+    let scanned = 0;
+    for (const url of urls) {
+      if (out.docId && out.provided.length) break;
+      if (scanned >= 400 || !/^https:\/\/([a-z0-9-]+\.)*(cdninstagram\.com|instagram\.com|fbcdn\.net)\//.test(url)) continue;
+      scanned++;
+      let text;
+      try { text = await (await fetch(url, { cache: 'force-cache', credentials: 'omit' })).text(); }
+      catch (e) { continue; }
+      if (text.indexOf(op) < 0) continue;
+      const d = text.match(reDoc);
+      if (d && !out.docId) out.docId = d[1];
+      const p = text.match(reParams);
+      if (p && !out.provided.length) out.provided = p[1].match(/__relay_internal__pv__\w+relayprovider/g) || [];
+    }
+    docCache[op] = out;
+    return out;
+  }
+
+  // Bir GraphQL sorgusu gönderir. Cevaptaki "data" alanını döndürür.
+  async function gql(op, docId, variables) {
+    await throttle();
+    const t = await getTokens();
+    const body = new URLSearchParams({
+      __user: '0', __a: '1', __comet_req: '7',
+      fb_dtsg: t.dtsg,
+      jazoest: '2' + [...t.dtsg].reduce((a, c) => a + c.charCodeAt(0), 0),
+      lsd: t.lsd,
+      fb_api_caller_class: 'RelayModern',
+      fb_api_req_friendly_name: op,
+      variables: JSON.stringify(variables),
+      server_timestamps: 'true',
+      doc_id: docId,
+    });
+    const headers = {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'X-FB-Friendly-Name': op,
+      'X-CSRFToken': getCookie('csrftoken') || CSRF,
+      'X-IG-App-ID': CONFIG.APP_ID,
+    };
+    if (t.lsd) headers['X-FB-LSD'] = t.lsd;
+    let res;
+    try {
+      res = await fetch('https://www.instagram.com/api/graphql', { method: 'POST', credentials: 'include', headers: headers, body: body });
+    } catch (e) {
+      throw new StopError('Ağ hatası: ' + e.message);
+    }
+    const raw = (await res.text()).replace(/^for \(;;\);/, '').trim();
+    let data = null;
+    try { data = JSON.parse(raw); } catch (e) {
+      try { data = JSON.parse(raw.split('\n')[0]); } catch (e2) { /* JSON değil */ }
+    }
+    const errText = data && ((data.errors && data.errors.map((x) => x.message || x.summary || '').join(' · ')) || data.errorSummary || data.errorDescription || '');
+    const detail = ' [graphql ' + op + ' · doc ' + docId + ' · HTTP ' + res.status + (errText ? ' · "' + String(errText).slice(0, 160) + '"' : '') + ']';
+    if (res.status === 429 || /rate limit|wait a few minutes|birkaç dakika|try again later|feedback_required/i.test(errText || '')) {
+      throw new StopError('Instagram geçici bir sınır koydu. Birkaç saat bekleyip tekrar dene. Toplanan veriler kaydedildi.' + detail);
+    }
+    if (res.status === 401 || /login_required/i.test(errText || '')) throw new StopError('Oturum bulunamadı. Instagram\'a tekrar giriş yap.' + detail);
+    if (!data) { const e = new Error('Cevap okunamadı (HTML döndü).' + detail); e.gqlText = ''; throw e; }
+    if (!data.data) { const e = new Error('Sorgu başarısız.' + detail); e.gqlText = errText || ''; throw e; }
+    return data.data;
+  }
+
+  // Sorguyu sırayla aday numaralarla dener; eksik bayrak hatası gelirse bayrağı ekleyip tekrar dener.
+  // Çalışan numarayı bir sonraki çalıştırma için hatırlar.
+  let postsOp = null;
+  async function gqlWithDiscovery(op, baseVars) {
+    const found = await discoverOperation(op);
+    const provided = {};
+    Object.keys(GQL.PROVIDED_DEFAULTS).forEach((k) => { provided[k] = GQL.PROVIDED_DEFAULTS[k]; });
+    if (found.provided.length) {
+      // Sayfadaki liste esas alınır; değeri bilinmeyenler için önce sağlayıcının kendisine sorulur, yoksa false.
+      Object.keys(provided).forEach((k) => { if (found.provided.indexOf(k) < 0) delete provided[k]; });
+      found.provided.forEach((k) => {
+        if (k in provided) return;
+        const m = pageRequire(k.replace('__relay_internal__pv__', '').replace(/relayprovider$/, '.relayprovider'));
+        let v = false;
+        try { if (m && typeof m.get === 'function') v = m.get(); } catch (e) { /* yok say */ }
+        provided[k] = typeof v === 'boolean' ? v : false;
+      });
+    }
+    const candidates = [...new Set([found.docId, (store.docIds || {})[op]].concat(GQL.KNOWN_DOC_IDS[op] || []).filter(Boolean))];
+    let lastErr = null;
+    for (const docId of candidates) {
+      for (let fix = 0; fix < 6; fix++) {
+        try {
+          const data = await gql(op, docId, Object.assign({}, baseVars, provided));
+          store.docIds = Object.assign({}, store.docIds, { [op]: docId });
+          postsOp = { docId: docId, provided: provided, source: docId === found.docId ? 'sayfadan' : 'kayıtlı' };
+          return data;
+        } catch (e) {
+          if (e instanceof StopError) throw e;
+          lastErr = e;
+          const missing = String(e.gqlText || '').match(/__relay_internal__pv__\w+relayprovider/);
+          if (missing && !(missing[0] in provided)) { provided[missing[0]] = false; continue; }
+          break; // bu numara çalışmıyor, sıradakine geç
+        }
+      }
+    }
+    throw lastErr || new Error('Sorgu numarası bulunamadı.');
+  }
+
+  // Cevaptaki gönderi bağlantısını bulur (adı değişse bile "edges[].node.code" yapısından tanınır).
+  function findTimeline(data) {
+    if (data && data.xdt_api__v1__feed__user_timeline_graphql_connection) return data.xdt_api__v1__feed__user_timeline_graphql_connection;
+    let hit = null;
+    (function walk(o, depth) {
+      if (hit || !o || typeof o !== 'object' || depth > 5) return;
+      if (Array.isArray(o.edges) && o.edges.length && o.edges[0].node && o.edges[0].node.code !== undefined) { hit = o; return; }
+      Object.keys(o).forEach((k) => walk(o[k], depth + 1));
+    })(data, 0);
+    return hit || (data && data.xdt_api__v1__feed__user_timeline_graphql_connection === null ? { edges: [] } : null);
+  }
+
+  async function fetchPosts(limit) {
+    if (!store.me || !store.me.username) throw new Error('Kullanıcı adı alınamadığı için gönderiler istenemedi.');
+    const items = [];
+    let after = null;
+    let page = 0;
+    while (items.length < limit) {
+      const vars = {
+        data: { count: 12, include_reel_media_seen_timestamp: true, include_relationship_info: true, latest_besties_reel_media: true, latest_reel_media: true },
+        username: store.me.username,
+      };
+      if (after) Object.assign(vars, { after: after, before: null, first: 12, last: null });
+      let data;
+      try {
+        data = page === 0 ? await gqlWithDiscovery(GQL.POSTS, vars) : await gql(GQL.POSTS, postsOp.docId, Object.assign({}, vars, postsOp.provided));
+      } catch (e) {
+        if (e instanceof StopError || page === 0) throw e;
+        log('⚠ ' + items.length + ' gönderiden sonrası alınamadı: ' + e.message);
+        break;
+      }
+      const tl = findTimeline(data);
+      if (!tl) throw new Error('Cevapta gönderi listesi yok. Instagram cevabın yapısını değiştirmiş olabilir.');
+      (tl.edges || []).forEach((e) => {
+        const n = e && e.node;
+        if (!n || !(n.pk || n.id)) return;
+        items.push({
+          pk: String(n.pk || String(n.id).split('_')[0]),
+          code: n.code || '',
+          taken_at: n.taken_at || 0,
+          comment_count: typeof n.comment_count === 'number' ? n.comment_count : 1,
+          like_count: typeof n.like_count === 'number' ? n.like_count : null,
+          top_likers: (n.facepile_top_likers || []).map((u) => String(u.pk || u.id || '')).filter(Boolean),
+        });
+      });
+      page++;
+      if (page === 1 && postsOp) log('Gönderi sorgusu çalıştı (doc ' + postsOp.docId + ', ' + postsOp.source + ').');
+      setStatus('Gönderiler alınıyor: ' + Math.min(items.length, limit));
+      const pi = tl.page_info || {};
+      if (!pi.has_next_page || !pi.end_cursor) break;
+      after = pi.end_cursor;
+    }
+    save();
     return items.slice(0, limit);
   }
 
@@ -470,6 +633,7 @@
           log('✖ Gönderiler alınamadı. Hesapta gönderi varsa beğeni ve yorumlar bu taramada sayılmadı, sonuçlara güvenme. ' + e.message);
         }
         store.lastPostIds = [];
+        let likersWarned = false;
         for (let i = 0; i < posts.length; i++) {
           const p = posts[i];
           const pk = mediaPk(p);
@@ -478,7 +642,20 @@
           const recent = Date.now() - t < CONFIG.REFRESH_POST_DAYS * DAY;
           setStatus('Gönderi ' + (i + 1) + ' / ' + posts.length + ' inceleniyor…');
           try {
-            if (opts.likes && (!entry.likers || recent)) entry.likers = await fetchLikers(pk);
+            if (opts.likes && (!entry.likers || recent)) {
+              if (p.like_count === 0) entry.likers = [];
+              else {
+                try { entry.likers = await fetchLikers(pk); }
+                catch (e) {
+                  if (e instanceof StopError || !p.top_likers || !p.top_likers.length) throw e;
+                  if (!likersWarned) {
+                    likersWarned = true;
+                    log('⚠ Beğenenler listesi alınamadı, sadece gönderide görünen ilk birkaç beğenen sayılıyor. ' + e.message);
+                  }
+                  entry.likers = Array.from(new Set((entry.likers || []).concat(p.top_likers)));
+                }
+              }
+            }
             if (opts.comments && (!entry.commenters || recent)) {
               entry.commenters = (p.comment_count || 0) > 0 ? await fetchCommenters(pk) : [];
             }

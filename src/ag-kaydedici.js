@@ -7,7 +7,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '1.0';
+  const VERSION = '1.1';
   if (window.__igKayit) { window.__igKayit.show(); return; }
 
   const MAX = 400;
@@ -89,8 +89,10 @@
   }
 
   // ---------- fetch ve XHR'ı izle (istekleri değiştirmez) ----------
+  const seen = { fetch: 0, xhr: 0 };
   const origFetch = window.fetch;
   window.fetch = function (input, init) {
+    seen.fetch++;
     const url = typeof input === 'string' ? input : (input && input.url) || String(input);
     const method = (init && init.method) || (input && input.method) || 'GET';
     const body = init && init.body;
@@ -107,6 +109,7 @@
   XMLHttpRequest.prototype.open = function (m, url) { this.__kayit = { m: String(m).toUpperCase(), url: String(url) }; return XO.apply(this, arguments); };
   XMLHttpRequest.prototype.send = function (body) {
     const k = this.__kayit;
+    seen.xhr++;
     if (k && relevant(k.url)) {
       this.addEventListener('loadend', () => {
         let t = '';
@@ -131,7 +134,7 @@
   document.body.append(box);
   function updateBox() {
     const ops = new Set(records.map((r) => r.islem || r.adres));
-    count.textContent = records.length + ' istek kaydedildi · ' + ops.size + ' farklı tür';
+    count.textContent = records.length + ' istek kaydedildi · ' + ops.size + ' farklı tür (izlenen: ' + (seen.fetch + seen.xhr) + ')';
   }
   updateBox();
 

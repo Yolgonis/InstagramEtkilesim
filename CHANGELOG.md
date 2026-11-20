@@ -1,5 +1,13 @@
 # Değişiklikler
 
+## 0.6.0 (2026-11-21)
+
+- **Gönderiler yeniden alınabiliyor.** Instagram eski gönderi adreslerini (feed/user, web_profile_info) kapattı, hepsi HTTP 404 dönüyordu. Araç artık gönderileri Instagram web sitesinin kendi kullandığı yoldan alıyor (`/api/graphql`, `PolarisProfilePostsQuery`). Bu yol gerçek bir hesapta ağ kaydedicisiyle tespit edildi.
+- Sorgu numarası (doc_id) Instagram tarafından sık değiştiriliyor. Araç bu numarayı her çalıştırmada Instagram sayfasının yüklediği kod dosyalarından okuyor. Okuyamazsa en son çalışan numarayı, o da olmazsa bilinen numaraları deniyor.
+- Beğeni sayısı 0 olan gönderiler için beğenen listesi, yorum sayısı 0 olanlar için yorum listesi istenmiyor.
+- Beğenen listesi alınamazsa gönderide görünen ilk birkaç beğenen sayılıyor ve bu durum günlükte yazıyor.
+- Ağ kaydedici v1.1: kutuda izlenen toplam istek sayısı da görünüyor.
+
 ## 0.5.3 (2026-11-21)
 
 - Gönderiler önce profil bilgisinden alınıyor. Bu adres gönderi sayısını da verdiği için hesapta gönderi yoksa gönderi akışına hiç istek atılmıyor ve günlükte "Hesapta gönderi yok" yazıyor.
