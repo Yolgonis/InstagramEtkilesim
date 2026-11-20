@@ -1,5 +1,10 @@
 # Değişiklikler
 
+## 0.4.1 (2026-11-20)
+
+- Düzeltme: Kod aynı sekmede ikinci kez yapıştırılınca (önceki panel kapanmış, Instagram tarafından silinmiş ya da eski sürüm açıkken) hiçbir şey olmuyordu. Artık eski panel kaldırılıp yenisi açılıyor. Aynı sürüm zaten açıksa öne getirilip kısa süre vurgulanıyor.
+- Konsola "açıldı" mesajı yazılıyor.
+
 ## 0.4.0 (2026-11-20)
 
 - **Liste sekmeleri** (sayılarıyla): **Takipçilerim**, **Takip etmediklerim** (seni takip eden ama senin takip etmediklerin) ve **Beni takip etmeyenler** (takip ettiğin ama seni takip etmeyenler).

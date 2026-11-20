@@ -1,5 +1,5 @@
 /*!
- * Instagram Etkileşim Analizi, v0.4.0
+ * Instagram Etkileşim Analizi, v0.4.1
  * Seni takip eden ama gönderilerini beğenmeyen, yorum yapmayan ve
  * hikâyelerini izlemeyen kişileri listeler.
  *
@@ -13,7 +13,7 @@
 (async () => {
   'use strict';
 
-  const VERSION = '0.4.0';
+  const VERSION = '0.4.1';
   const CONFIG = {
     DELAY_MIN_MS: 2000,     // istekler arası en az bekleme
     DELAY_MAX_MS: 4500,     // istekler arası en fazla bekleme
@@ -30,7 +30,25 @@
     alert('Bu kod yalnızca www.instagram.com üzerinde çalışır. Önce instagram.com\'u aç.');
     return;
   }
-  if (window.__igEtk) { window.__igEtk.focus(); return; }
+  // Kod daha önce yapıştırıldıysa: aynı sürümün paneli açıksa onu öne getir,
+  // değilse (eski sürüm, kapanmış ya da sayfadan silinmiş panel) eskisini kaldırıp yeniden aç.
+  const prev = window.__igEtk;
+  if (prev) {
+    const prevOpen = prev.isOpen ? prev.isOpen() : false;
+    if (prev.version === VERSION && prevOpen) {
+      prev.focus();
+      console.info('[Etkileşim Analizi] Panel zaten açık, öne getirildi.');
+      return;
+    }
+    if (prev.busy && prev.busy()) {
+      prev.focus();
+      alert('Önceki panelde işlem devam ediyor. Önce onu durdur ve kapat, sonra kodu tekrar yapıştır.');
+      return;
+    }
+    try { if (prev.destroy) prev.destroy(); } catch (e) { /* yok say */ }
+    delete window.__igEtk;
+  }
+  document.querySelectorAll('[data-ig-etk]').forEach(el => el.remove());
 
   const getCookie = (n) => {
     const m = document.cookie.match('(?:^|; )' + n + '=([^;]*)');
@@ -803,10 +821,25 @@
   const themeObserver = new MutationObserver(applyTheme);
   themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style'] });
 
-  window.__igEtk = { focus: () => { ui.panel.style.display = 'block'; } };
+  ui.panel.setAttribute('data-ig-etk', VERSION);
+  window.__igEtk = {
+    version: VERSION,
+    isOpen: () => ui.panel.isConnected,
+    busy: () => running,
+    destroy: () => teardown(),
+    focus: () => {
+      ui.panel.style.display = 'flex';
+      ui.panel.style.outline = '3px solid #0095f6';
+      setTimeout(() => { ui.panel.style.outline = ''; }, 1200);
+    },
+  };
+  console.info('[Etkileşim Analizi] v' + VERSION + ' açıldı. Panel sayfanın sağında.');
 
   function close() {
     if (running && !confirm('İşlem devam ediyor. Durdurup kapatılsın mı?')) return;
+    teardown();
+  }
+  function teardown() {
     stopped = true;
     if (wakeUp) wakeUp();
     themeObserver.disconnect();
