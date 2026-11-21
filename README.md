@@ -2,7 +2,7 @@
 
 ![Lisans: MIT](https://img.shields.io/badge/lisans-MIT-blue)
 
-Takipçilerinden **kimlerin seninle etkileşimde olduğunu** gösteren küçük bir araç: kimler gönderilerini beğeniyor, yorum yapıyor, hikâyelerini izliyor. Ayrıca seni takip edip senin takip etmediklerini ve senin takip edip seni takip etmeyenleri ayrı listelerde gösterir. Tarayıcıda çalışır, kurulum ya da indirme gerektirmez, şifre istemez.
+Takipçilerinden **kimlerin seninle etkileşimde olduğunu** gösteren küçük bir araç: kimler gönderilerini beğeniyor, kimler yorum yapıyor. Ayrıca seni takip edip senin takip etmediklerini ve senin takip edip seni takip etmeyenleri ayrı listelerde gösterir. Tarayıcıda çalışır, kurulum ya da indirme gerektirmez, şifre istemez.
 
 **👉 Kullanmak için: https://Yolgonis.github.io/InstagramEtkilesim/**
 
@@ -29,16 +29,16 @@ Telefonda çalışmaz, çünkü mobil tarayıcılarda konsol yok.
   - **Liste:** *Takipçilerim*, *Takip etmediklerim* (seni takip eden ama senin takip etmediklerin), *Beni takip etmeyenler* (takip ettiğin ama seni takip etmeyenler). Her sekmede kişi sayısı yazar.
   - **Göster:** "Etkileşime girenler", "Hiç etkileşim yok", "En fazla 1" gibi filtreler.
   - **Dönem:** son 7, 30, 90 gün ya da tüm veri.
-  - **Tarama ayarları:** kaç gönderinin taranacağı (varsayılan 15) ve beğeni, yorum, hikâye izleyeni seçenekleri.
+  - **Tarama ayarları:** kaç gönderinin taranacağı (varsayılan 15) ve beğeni, yorum seçenekleri.
   - **Dışa aktar:** kullanıcı adlarını kopyalama ve CSV indirme.
-- **Orta alan:** dönem özeti ("Son 30 günde 214 takipçin seninle etkileşime girdi (%21)" gibi) ve kişi kartları. Her kartta profil fotoğrafı, onaylı hesap tiki, ❤ beğeni, 💬 yorum ve 👁 hikâye sayısı görünür. Karta tıklayınca kişi seçilir.
+- **Orta alan:** dönem özeti ("Son 30 günde 214 takipçin seninle etkileşime girdi (%21)" gibi) ve kişi kartları. Her kartta profil fotoğrafı, onaylı hesap tiki, ❤ beğeni ve 💬 yorum sayısı görünür. Karta tıklayınca kişi seçilir.
 - **Alt çubuk:** durum satırı ve **Günlüğü göster** ile açılan ayrıntılı günlük. Hata olursa günlük kendiliğinden açılır.
 
 ## Ne yapar?
 
 - Takipçi ve takip ettiğin kişi listelerini çeker.
 - Son *N* gönderinin **beğenenlerini** ve **yorum yapanlarını** çeker.
-- O an yayında olan **hikâyelerin izleyenlerini** çeker ve kaydeder. Instagram izleyen listesini yalnızca hikâye yayındayken gösterdiği için veriler her çalıştırmada birikir.
+- **Hikâye izleyenleri şimdilik kapalı.** Instagram eski hikâye adreslerini kapattı. Yeni yol bulunana kadar etkileşim yalnızca beğeni ve yorumlardan hesaplanıyor.
 - Etkileşime girenler listesi tarama sırasında canlı güncellenir.
 - **Takipçi çıkarma:** *Takipçilerim* ya da *Takip etmediklerim* sekmesinde kişileri seç (ya da **Görünenleri seç**), sonra **Seçilenleri takipçilerimden çıkar**'a bas. İstersen takip ettiklerini takipten de çıkarır.
 - **Takipten çıkma:** *Beni takip etmeyenler* sekmesinde buton **Seçilenleri takipten çıkar** olur.
@@ -46,10 +46,8 @@ Telefonda çalışmaz, çünkü mobil tarayıcılarda konsol yok.
 
 ## Sonuçları doğru okumak
 
-- **Hikâye izleyenleri** yalnızca hikâye yayındayken alınabilir. Hikâye attıktan sonraki **24 saat içinde** taramayı çalıştır. Veriler birikir, 2–3 hafta sonra liste çok daha güvenilir olur.
-- **Hesabında hiç gönderi yoksa ve yayında hikâye yoksa** herkes 0 etkileşimle görünür. Bu, kimsenin etkileşime girmediği anlamına gelmez, sadece ölçülecek bir şey olmadığı anlamına gelir. Bu durumda kimseyi çıkarma.
-- Günlükte `Hikâyeler alınamadı … HTTP 500` uyarısı normaldir: yayında hikâye olmadığında Instagram böyle cevap verir.
-- Günlükte `✖ Gönderiler alınamadı` görürsen beğeni ve yorumlar o taramada sayılmamıştır, sonuçlara güvenme. Gönderin ya da yayında hikâyen olduğu halde bu uyarıları görüyorsan lütfen [bir hata kaydı aç](https://github.com/Yolgonis/InstagramEtkilesim/issues).
+- **Hesabında hiç gönderi yoksa** herkes 0 etkileşimle görünür. Bu, kimsenin etkileşime girmediği anlamına gelmez, sadece ölçülecek bir şey olmadığı anlamına gelir. Bu durumda kimseyi çıkarma.
+- Günlükte `✖ Gönderiler alınamadı` görürsen beğeni ve yorumlar o taramada sayılmamıştır, sonuçlara güvenme. Gönderin olduğu halde bu uyarıyı görüyorsan lütfen [bir hata kaydı aç](https://github.com/Yolgonis/InstagramEtkilesim/issues).
 - **"yeni"** etiketli kişiler seni yakın zamanda takip etmiş olabilir, henüz etkileşime girme fırsatları olmamış olabilir.
 - Takipçi sayın Instagram'da gösterilenden bir iki kişi az çıkabilir. Hesabını dondurmuş ya da kısıtlanmış kişiler listede yer almaz.
 - *Beni takip etmeyenler* sekmesindeki kişiler seni takip etmediği için etkileşim sayıları bu sekmede anlamlı değildir.
@@ -92,7 +90,7 @@ Bu araç Instagram veya Meta ile bağlantılı değildir, onlar tarafından onay
 
 ## English
 
-A small browser tool that shows which of your Instagram followers **interact with you** by liking your posts, commenting or watching your stories. It also lists people who follow you but you don't follow back, and people you follow who don't follow you back.
+A small browser tool that shows which of your Instagram followers **interact with you** by liking or commenting on your posts. It also lists people who follow you but you don't follow back, and people you follow who don't follow you back.
 
 **Usage:** Log in to instagram.com on a desktop browser, open the [tool page](https://Yolgonis.github.io/InstagramEtkilesim/), click **Kodu kopyala** (Copy code), paste it into the developer console (`F12` → Console) and press Enter. A full-screen view opens over Instagram. Click **Taramayı başlat** (Start scan), and close it with **×** when you're done.
 
@@ -102,6 +100,6 @@ A small browser tool that shows which of your Instagram followers **interact wit
 - Filters, search, copying usernames and CSV export.
 - Optional removal of selected followers, or unfollowing selected accounts. Both are throttled (12–25 s between actions, a 4-minute break every 10, at most 100 per day).
 
-Story viewers can only be collected while a story is live, so run it within 24 hours of posting a story. If your account has no posts and no live story, everyone shows zero interactions. Don't remove anyone based on that.
+Story viewers are turned off for now because Instagram closed the old story endpoints. If your account has no posts, everyone shows zero interactions. Don't remove anyone based on that.
 
 It doesn't ask for your password, and all data stays in your browser's `localStorage`. The tool uses Instagram's unofficial internal API, so use it at your own risk. It is not affiliated with Instagram or Meta. MIT licensed.

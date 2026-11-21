@@ -1,5 +1,9 @@
 # Değişiklikler
 
+## 0.7.0 (2026-11-21)
+
+- **Hikâye izleyenleri şimdilik kapalı.** Instagram eski hikâye adreslerini kapattı ve yerine geçen yol henüz bilinmiyor. Etkileşim artık yalnızca beğeni ve yorumlardan hesaplanıyor. Ayarlardaki hikâye seçeneği, özetteki ve kartlardaki 👁 sayıları kaldırıldı. Daha önce kaydedilmiş hikâye verisi silinmedi ama sayılmıyor.
+
 ## 0.6.0 (2026-11-21)
 
 - **Gönderiler yeniden alınabiliyor.** Instagram eski gönderi adreslerini (feed/user, web_profile_info) kapattı, hepsi HTTP 404 dönüyordu. Araç artık gönderileri Instagram web sitesinin kendi kullandığı yoldan alıyor (`/api/graphql`, `PolarisProfilePostsQuery`). Bu yol gerçek bir hesapta ağ kaydedicisiyle tespit edildi.

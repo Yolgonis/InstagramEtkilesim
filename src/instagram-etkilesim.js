@@ -1,7 +1,7 @@
 /*!
- * Instagram Etkileşim Analizi, v0.6.0
- * Seni takip eden ama gönderilerini beğenmeyen, yorum yapmayan ve
- * hikâyelerini izlemeyen kişileri listeler.
+ * Instagram Etkileşim Analizi, v0.7.0
+ * Seni takip eden ama gönderilerini beğenmeyen ve yorum yapmayan
+ * kişileri listeler. (Hikâye izleyenleri şimdilik kapalı.)
  *
  * - Tarama yalnızca OKUR. Takipçi çıkarma sadece sen seçip onaylarsan, yavaş ve günlük sınırla yapılır.
  * - Şifre istemez. Instagram'daki mevcut oturumunla çalışır.
@@ -13,7 +13,9 @@
 (async () => {
   'use strict';
 
-  const VERSION = '0.6.0';
+  const VERSION = '0.7.0';
+  // Hikâye izleyenleri şimdilik kapalı: Instagram'ın eski hikâye adresleri çalışmıyor, yenisi henüz bilinmiyor.
+  const STORIES_ENABLED = false;
   const CONFIG = {
     DELAY_MIN_MS: 2000,     // istekler arası en az bekleme
     DELAY_MAX_MS: 4500,     // istekler arası en fazla bekleme
@@ -591,7 +593,7 @@
       posts: clamp(parseInt(ui.postCount.value, 10) || CONFIG.DEFAULT_POSTS, 1, 200),
       likes: ui.cbLikes.checked,
       comments: ui.cbComments.checked,
-      stories: ui.cbStories.checked,
+      stories: STORIES_ENABLED && ui.cbStories.checked,
     };
     store.lastOpts = opts;
     log('— Analiz başladı —');
@@ -627,7 +629,7 @@
         let posts = [];
         try {
           posts = await fetchPosts(opts.posts);
-          log(posts.length ? '✓ ' + posts.length + ' gönderi bulundu.' : 'Hesapta gönderi yok. Sadece hikâyeler incelenecek.');
+          log(posts.length ? '✓ ' + posts.length + ' gönderi bulundu.' : 'Hesapta gönderi yok.');
         } catch (e) {
           if (e instanceof StopError) throw e;
           log('✖ Gönderiler alınamadı. Hesapta gönderi varsa beğeni ve yorumlar bu taramada sayılmadı, sonuçlara güvenme. ' + e.message);
@@ -719,7 +721,8 @@
   // days: yalnızca son X gün içinde paylaşılan gönderi/hikâyeleri say (0 = tüm veri).
   function compute(days) {
     const followers = store.followers || [];
-    const o = store.lastOpts || { likes: true, comments: true, stories: true };
+    const o = Object.assign({ likes: true, comments: true }, store.lastOpts || {});
+    if (!STORIES_ENABLED) o.stories = false;
     const since = days ? Date.now() - days * DAY : 0;
     const L = new Map(), C = new Map(), S = new Map();
     const inc = (m, id) => m.set(id, (m.get(id) || 0) + 1);
@@ -925,7 +928,7 @@
   ui.emptyState = h('div', { style: { margin: '70px auto', maxWidth: '540px', textAlign: 'center', lineHeight: '1.6' } },
     h('div', { style: { fontSize: '24px', fontWeight: '700', marginBottom: '8px' } }, 'Kimler seninle etkileşimde?'),
     h('div', { style: { fontSize: '14px', color: '@muted', marginBottom: '20px' } },
-      'Taramayı başlat. Takipçilerin, gönderilerini beğenenler, yorum yapanlar ve hikâyelerini izleyenler taranır. ',
+      'Taramayı başlat. Takipçilerin, gönderilerini beğenenler ve yorum yapanlar taranır. ',
       'Etkileşime girenler tarama sırasında burada canlı listelenir.'),
     ui.bigStart);
 
@@ -950,7 +953,7 @@
       blockLabel('Son ', ui.postCount, ' gönderi'),
       blockLabel(ui.cbLikes, 'Beğeniler'),
       blockLabel(ui.cbComments, 'Yorumlar'),
-      blockLabel(ui.cbStories, 'Hikâye izleyenleri')),
+      ...(STORIES_ENABLED ? [blockLabel(ui.cbStories, 'Hikâye izleyenleri')] : [])),
     section('Dışa aktar', h('div', { style: { display: 'flex', gap: '6px', flexWrap: 'wrap' } },
       btn('Listeyi kopyala', copyList), btn('CSV indir', downloadCsv))),
     h('div', { style: { padding: '14px 16px', fontSize: '12px', color: '@muted', lineHeight: '1.5' } },
@@ -1124,13 +1127,13 @@
         h('b', { style: { fontSize: '20px' } }, r.active), ' takipçin seninle etkileşime girdi (',
         h('b', null, pct(r.active, current.length)), ').'),
       h('div', { style: { color: '@muted' } },
-        '❤ ' + r.byType.likes + ' kişi beğendi  ·  💬 ' + r.byType.comments + ' kişi yorum yaptı  ·  👁 ' +
-        r.byType.stories + ' kişi hikâye izledi'),
+        '❤ ' + r.byType.likes + ' kişi beğendi  ·  💬 ' + r.byType.comments + ' kişi yorum yaptı' + (STORIES_ENABLED ? '  ·  👁 ' +
+        r.byType.stories + ' kişi hikâye izledi' : '')),
       h('div', null, 'Toplam takipçi: ', h('b', null, current.length),
         '  ·  Hiç etkileşim yok: ', h('b', { style: { color: '@danger' } }, zero),
         '  ·  Sadece 1: ', h('b', null, one)),
       h('div', { style: { fontSize: '11px', color: '@faint', marginTop: '4px' } },
-        'Bu dönemde incelenen: ' + r.postsUsed + ' gönderi, ' + r.storiesUsed + ' hikâye.' +
+        'Bu dönemde incelenen: ' + r.postsUsed + ' gönderi' + (STORIES_ENABLED ? ', ' + r.storiesUsed + ' hikâye' : '') + '.' +
         (r.postsUsed === 0 && r.storiesUsed === 0 ? ' Bu dönemde paylaşım yok; daha uzun bir dönem seç.' : '') +
         (r.coverageShort ? ' Not: incelenen en eski gönderi ' + new Date(r.oldest).toLocaleDateString('tr-TR') +
           ' tarihli. Dönemin tamamı için gönderi sayısını artırıp tekrar başlat.' : '')),
@@ -1202,7 +1205,7 @@
       return;
     }
     ui.list.append(h('div', { style: { fontSize: '12px', color: '@faint', padding: '2px 0', gridColumn: '1 / -1' } },
-      rows.length + ' kişi  ·  ❤ beğeni  💬 yorum  👁 hikâye  ·  seçmek için karta tıkla'));
+      rows.length + ' kişi  ·  ❤ beğeni  💬 yorum' + (STORIES_ENABLED ? '  👁 hikâye' : '') + '  ·  seçmek için karta tıkla'));
     const newest = Math.max(10, Math.round(lastRows.length * 0.03)); // en yeni ~%3
     for (const x of rows) {
       const done = isDone(x);
@@ -1233,7 +1236,7 @@
           !done && x.isFollower && x.idx < newest ? badge('yeni', '@badgeBg', '@badgeFg') : null,
           x.n ? h('div', { style: { fontSize: '11px', color: '@faint', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' } }, x.n) : null),
         h('div', { style: { fontSize: '12px', color: '@muted', whiteSpace: 'nowrap' } },
-          '❤' + x.l + ' 💬' + x.c + ' 👁' + x.s));
+          '❤' + x.l + ' 💬' + x.c + (STORIES_ENABLED ? ' 👁' + x.s : '')));
       // Seçili kart mavi çerçeveyle gösterilir; kartın herhangi bir yerine tıklamak seçer.
       function paintSel() {
         item.style.borderColor = fill(!done && isSel() ? '@accent' : '@line');
