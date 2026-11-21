@@ -52,6 +52,23 @@ Telefonda çalışmaz, çünkü mobil tarayıcılarda konsol yok.
 - Takipçi sayın Instagram'da gösterilenden bir iki kişi az çıkabilir. Hesabını dondurmuş ya da kısıtlanmış kişiler listede yer almaz.
 - *Beni takip etmeyenler* sekmesindeki kişiler seni takip etmediği için etkileşim sayıları bu sekmede anlamlı değildir.
 
+## Sürüm hedefleri
+
+Her özellik gerçek bir hesapta denenip çalıştığı görüldükten sonra o sürüm yayınlanmış sayılır. Ayrıntılar için [CHANGELOG.md](CHANGELOG.md) dosyasına bak.
+
+| Sürüm | Durum | İçerik |
+| --- | --- | --- |
+| 0.1 | ✅ Yapıldı | Takipçiler, gönderi beğenileri ve yorumları, yayındaki hikâyelerin izleyenleri. Filtre, arama, CSV, hız koruması |
+| 0.2 | ✅ Yapıldı | Canlı liste, 7/30/90 günlük dönem özeti, güvenli takipçi çıkarma |
+| 0.3 | ✅ Yapıldı | Taşınabilir ve boyutlandırılabilir panel |
+| 0.4 | ✅ Yapıldı | Üç liste sekmesi, takipten çıkma, onaylı hesap tiki |
+| 0.5 | ✅ Yapıldı | Tam ekran arayüz, profil fotoğrafları |
+| 0.6 | ✅ Yapıldı | Gönderiler Instagram web'in kendi yöntemiyle alınıyor (eski adresler kapandı) |
+| 0.7 | ✅ Yapıldı | Hikâyeler geçici olarak kapatıldı, etkileşim beğeni ve yorumlardan hesaplanıyor |
+| 0.7.x | 🔄 Sürüyor | Beğeni ve yorumların gerçek hesapta doğrulanması, çıkan hataların düzeltilmesi |
+| 0.9 | ⏳ Planlandı | Hikâye izleyenlerinin geri gelmesi |
+| 1.0 | ⏳ Planlandı | Mesajların etkileşime eklenmesi. Hedeflenen her şey çalışıyor |
+
 ## Gizlilik ve güvenlik
 
 - **Şifre istemez.** Instagram'da zaten açık olan oturumunla çalışır.
@@ -99,6 +116,8 @@ A small browser tool that shows which of your Instagram followers **interact wit
 - Three tabs: followers, followers you don't follow back, and accounts that don't follow you back. Verified accounts are marked.
 - Filters, search, copying usernames and CSV export.
 - Optional removal of selected followers, or unfollowing selected accounts. Both are throttled (12–25 s between actions, a 4-minute break every 10, at most 100 per day).
+
+**Roadmap:** 0.9 brings story viewers back, and 1.0 adds direct messages as an interaction type.
 
 Story viewers are turned off for now because Instagram closed the old story endpoints. If your account has no posts, everyone shows zero interactions. Don't remove anyone based on that.
 
