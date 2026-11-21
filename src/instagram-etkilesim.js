@@ -1,5 +1,5 @@
 /*!
- * Instagram Etkileşim Analizi, v0.7.0
+ * Instagram Etkileşim Analizi, v0.7.1
  * Seni takip eden ama gönderilerini beğenmeyen ve yorum yapmayan
  * kişileri listeler. (Hikâye izleyenleri şimdilik kapalı.)
  *
@@ -13,7 +13,7 @@
 (async () => {
   'use strict';
 
-  const VERSION = '0.7.0';
+  const VERSION = '0.7.1';
   // Hikâye izleyenleri şimdilik kapalı: Instagram'ın eski hikâye adresleri çalışmıyor, yenisi henüz bilinmiyor.
   const STORIES_ENABLED = false;
   const CONFIG = {
@@ -427,27 +427,40 @@
     return items.slice(0, limit);
   }
 
-  async function fetchLikers(pk) {
+  // Kapsam durumu: 'tam' = liste eksiksiz, 'kısmi' = bir kısmı alındı, 'alınamadı' = hiç alınamadı.
+  async function fetchLikers(pk, likeCount) {
     const d = await api('media/' + pk + '/likers/');
-    return (d.users || []).map(idOf);
+    if (!Array.isArray(d.users)) throw new Error('Beğenen listesi beklenen biçimde değil.');
+    const ids = d.users.map(idOf);
+    // Instagram kapanmış ya da kısıtlı hesapları listelemez; birkaç kişilik fark normal sayılır.
+    const short = likeCount > 0 && ids.length < likeCount - Math.max(2, Math.ceil(likeCount * 0.05));
+    return { ids: ids, state: short ? 'kısmi' : 'tam' };
   }
 
   async function fetchCommenters(pk) {
     const ids = new Set();
     let minId = null;
     let pages = 0;
+    let partial = false;
     do {
       const d = await api('media/' + pk + '/comments/?can_support_threading=true&permalink_enabled=false' +
         (minId ? '&min_id=' + encodeURIComponent(minId) : ''));
-      (d.comments || []).forEach((c) => {
+      if (!Array.isArray(d.comments)) throw new Error('Yorum listesi beklenen biçimde değil.');
+      d.comments.forEach((c) => {
         if (c.user) ids.add(idOf(c.user));
-        (c.preview_child_comments || []).forEach((cc) => cc.user && ids.add(idOf(cc.user)));
+        const kids = c.preview_child_comments || [];
+        kids.forEach((cc) => cc.user && ids.add(idOf(cc.user)));
+        // Yanıtların yalnızca önizlemesi geliyor; daha fazla yanıt varsa liste kısmi.
+        if ((c.child_comment_count || 0) > kids.length) partial = true;
       });
-      minId = d.next_min_id || null;
+      const next = d.next_min_id || null;
+      if (next && next === minId) { partial = true; break; } // aynı sayfa tekrar geldi
+      minId = next;
       pages++;
     } while (minId && pages < CONFIG.MAX_COMMENT_PAGES);
+    if (minId) partial = true; // sayfa sınırına takıldı
     ids.delete(USER_ID);
-    return [...ids];
+    return { ids: [...ids], state: partial ? 'kısmi' : 'tam' };
   }
 
   async function fetchActiveStories() {
@@ -519,6 +532,7 @@
     const msg = batch.length + ' kişi ' + what +
       (unfollowToo ? ' (takip ettiklerini ayrıca takipten de çıkaracaksın)' : '') + '.\n\n' +
       (batch.length < targets.length ? 'Günlük sınır yüzünden seçtiğin ' + targets.length + ' kişiden ilk ' + batch.length + ' kişi işlenecek.\n\n' : '') +
+      (lastIncomplete && !unfollowMode ? '⚠ Dikkat: ' + lastIncomplete + ' gönderinin verisi eksik. Seçtiğin kişilerden bazıları aslında etkileşime girmiş olabilir.\n\n' : '') +
       'Tahmini süre: yaklaşık ' + avgMin + ' dakika. Bu sürede sekmeyi açık tut.\n' +
       'Karşı tarafa bildirim gitmez ama bu işlem otomatik geri alınamaz.\n\nDevam edilsin mi?';
     if (!confirm(msg)) return;
@@ -643,28 +657,42 @@
           const entry = store.posts[pk] || { t: t, code: p.code || '' };
           const recent = Date.now() - t < CONFIG.REFRESH_POST_DAYS * DAY;
           setStatus('Gönderi ' + (i + 1) + ' / ' + posts.length + ' inceleniyor…');
-          try {
-            if (opts.likes && (!entry.likers || recent)) {
-              if (p.like_count === 0) entry.likers = [];
-              else {
-                try { entry.likers = await fetchLikers(pk); }
-                catch (e) {
-                  if (e instanceof StopError || !p.top_likers || !p.top_likers.length) throw e;
-                  if (!likersWarned) {
-                    likersWarned = true;
-                    log('⚠ Beğenenler listesi alınamadı, sadece gönderide görünen ilk birkaç beğenen sayılıyor. ' + e.message);
-                  }
-                  entry.likers = Array.from(new Set((entry.likers || []).concat(p.top_likers)));
+          // Beğeni ve yorumlar birbirinden bağımsız alınır; biri hata verirse diğeri yine denenir.
+          // Eksiksiz alınmamış veriler (durumu 'tam' olmayan) her çalıştırmada yeniden denenir.
+          if (opts.likes && (entry.ls !== 'tam' || recent)) {
+            if (p.like_count === 0) { entry.likers = []; entry.ls = 'tam'; }
+            else {
+              try {
+                const r = await fetchLikers(pk, p.like_count);
+                entry.likers = r.ids; entry.ls = r.state;
+              } catch (e) {
+                if (e instanceof StopError) throw e;
+                const top = p.top_likers || [];
+                // Önceki taramada bulunanlar kaybolmasın; gönderide görünen ilk beğenenler eklenir.
+                entry.likers = Array.from(new Set((entry.likers || []).concat(top)));
+                entry.ls = entry.likers.length ? 'kısmi' : 'alınamadı';
+                if (!likersWarned) {
+                  likersWarned = true;
+                  log('⚠ Beğenenler listesi alınamadı' + (top.length ? ', sadece gönderide görünen ilk birkaç beğenen sayılıyor' : '') + '. ' + e.message);
                 }
               }
             }
-            if (opts.comments && (!entry.commenters || recent)) {
-              entry.commenters = (p.comment_count || 0) > 0 ? await fetchCommenters(pk) : [];
-            }
-          } catch (e) {
-            if (e instanceof StopError) throw e;
-            log('⚠ Gönderi ' + (i + 1) + ' atlandı: ' + e.message);
           }
+          if (opts.comments && (entry.cs !== 'tam' || recent)) {
+            if (p.comment_count === 0) { entry.commenters = []; entry.cs = 'tam'; }
+            else {
+              try {
+                const r = await fetchCommenters(pk);
+                entry.commenters = r.ids; entry.cs = r.state;
+              } catch (e) {
+                if (e instanceof StopError) throw e;
+                entry.commenters = entry.commenters || [];
+                entry.cs = entry.commenters.length ? 'kısmi' : 'alınamadı';
+                log('⚠ Gönderi ' + (i + 1) + ' yorumları alınamadı: ' + e.message);
+              }
+            }
+          }
+          entry.seen = Date.now();
           store.posts[pk] = entry;
           store.lastPostIds.push(pk);
           save();
@@ -727,6 +755,7 @@
     const L = new Map(), C = new Map(), S = new Map();
     const inc = (m, id) => m.set(id, (m.get(id) || 0) + 1);
     let postsUsed = 0;
+    let incomplete = 0, likesIncomplete = 0, commentsIncomplete = 0;
     let oldest = Infinity;
     let postsTotal = 0;
     for (const pk of store.lastPostIds || []) {
@@ -738,6 +767,12 @@
       postsUsed++;
       if (o.likes) (p.likers || []).forEach((id) => inc(L, id));
       if (o.comments) (p.commenters || []).forEach((id) => inc(C, id));
+      // Eksiksiz alınmamış liste varsa 0 görünen biri aslında etkileşime girmiş olabilir.
+      const likeGap = o.likes && p.ls !== 'tam';
+      const commentGap = o.comments && p.cs !== 'tam';
+      if (likeGap || commentGap) incomplete++;
+      if (likeGap) likesIncomplete++;
+      if (commentGap) commentsIncomplete++;
     }
     const stories = Object.values(store.stories).filter((s) => !since || s.t >= since);
     if (o.stories) stories.forEach((s) => (s.viewers || []).forEach((id) => inc(S, id)));
@@ -756,6 +791,7 @@
     const active = rows.filter((x) => x.total > 0 && !store.done[x.id]);
     return {
       rows: rows, nonFollowers: nonFollowers, postsUsed: postsUsed, storiesUsed: o.stories ? stories.length : 0,
+      incomplete: incomplete, likesIncomplete: likesIncomplete, commentsIncomplete: commentsIncomplete,
       // Seçilen dönem incelenen en eski gönderiden daha geriye gidiyorsa uyarmak için:
       coverageShort: !!(days && postsTotal && oldest > since && postsTotal >= ((store.lastOpts && store.lastOpts.posts) || 0)),
       oldest: oldest === Infinity ? 0 : oldest,
@@ -1064,6 +1100,7 @@
   let lastRows = [];
   let lastNonFollowers = [];
   let view = 'followers';
+  let lastIncomplete = 0; // eksiksiz alınamamış gönderi sayısı (son hesaplamada)
   const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0) + '%';
 
   function viewRows() {
@@ -1117,6 +1154,7 @@
     const r = compute(days);
     lastRows = r.rows;
     lastNonFollowers = r.nonFollowers;
+    lastIncomplete = r.incomplete;
     const current = r.rows.filter((x) => !store.done[x.id]);
     const zero = current.filter((x) => x.total === 0).length;
     const one = current.filter((x) => x.total === 1).length;
@@ -1130,8 +1168,14 @@
         '❤ ' + r.byType.likes + ' kişi beğendi  ·  💬 ' + r.byType.comments + ' kişi yorum yaptı' + (STORIES_ENABLED ? '  ·  👁 ' +
         r.byType.stories + ' kişi hikâye izledi' : '')),
       h('div', null, 'Toplam takipçi: ', h('b', null, current.length),
-        '  ·  Hiç etkileşim yok: ', h('b', { style: { color: '@danger' } }, zero),
+        '  ·  Hiç etkileşim yok: ', h('b', { style: { color: '@danger' } }, zero + (r.incomplete ? ' (kesin değil)' : '')),
         '  ·  Sadece 1: ', h('b', null, one)),
+      r.incomplete ? h('div', { style: { color: '@danger', fontWeight: '600', marginTop: '4px' } },
+        '⚠ ' + r.incomplete + ' gönderinin verisi eksik (' +
+        [r.likesIncomplete ? r.likesIncomplete + ' beğeni listesi' : '', r.commentsIncomplete ? r.commentsIncomplete + ' yorum listesi' : '']
+          .filter(Boolean).join(', ') +
+        ' tam alınamadı). Etkileşimi 0 ya da az görünen kişiler aslında etkileşime girmiş olabilir. ' +
+        'Bu yüzden toplu seçim kapalı. Taramayı daha sonra tekrar çalıştır, eksikler yeniden denenir.') : null,
       h('div', { style: { fontSize: '11px', color: '@faint', marginTop: '4px' } },
         'Bu dönemde incelenen: ' + r.postsUsed + ' gönderi' + (STORIES_ENABLED ? ', ' + r.storiesUsed + ' hikâye' : '') + '.' +
         (r.postsUsed === 0 && r.storiesUsed === 0 ? ' Bu dönemde paylaşım yok; daha uzun bir dönem seç.' : '') +
@@ -1157,6 +1201,12 @@
   }
 
   function selectVisible() {
+    // Veri eksikken az etkileşimli görünenleri topluca seçtirme; yanlış kişiyi çıkarma riski var.
+    if (lastIncomplete && view !== 'nonFollowers' && ui.filter.value !== 'active') {
+      alert('Bazı gönderilerin beğeni ya da yorum listesi tam alınamadı. Etkileşimi az görünen kişiler aslında etkileşime girmiş olabilir.\n\n' +
+        'Bu yüzden toplu seçim kapalı. Taramayı daha sonra tekrar çalıştır. Kişileri tek tek kartlarına tıklayarak yine seçebilirsin.');
+      return;
+    }
     filteredRows().forEach((x) => { if (!isDone(x)) selected.add(x.id); });
     renderList();
   }

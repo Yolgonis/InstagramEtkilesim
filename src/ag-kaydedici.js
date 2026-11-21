@@ -1,5 +1,5 @@
 /*
- * Instagram Ağ Kaydedici (teşhis aracı), v1.0
+ * Instagram Ağ Kaydedici (teşhis aracı), v1.2
  * Instagram'ın kendi sayfasının hangi isteklerle gönderi, beğeni, yorum ve hikâye
  * izleyeni verisi aldığını kaydeder. Kendisi hiçbir istek atmaz, sadece izler.
  * Kayda yalnızca isteklerin adresi, adı ve cevabın YAPISI (alan adları ve türleri) girer.
@@ -7,7 +7,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '1.1';
+  const VERSION = '1.2';
   if (window.__igKayit) { window.__igKayit.show(); return; }
 
   const MAX = 400;
@@ -31,6 +31,10 @@
     return typeof v;
   }
   const maskPath = (p) => p.replace(/\d{5,}/g, '<kimlik>');
+  // Sayfa adresindeki kullanıcı adları ve gönderi kodları kayda girmesin. Yalnızca bilinen bölüm adları kalır.
+  const PAGE_WORDS = new Set(['explore', 'reels', 'reel', 'p', 'tv', 'stories', 'highlights', 'direct', 'inbox', 't', 'requests',
+    'accounts', 'activity', 'edit', 'followers', 'following', 'tagged', 'saved', 'liked_by', 'comments', 'archive', 'notifications', 'search']);
+  const maskPage = (p) => '/' + p.split('/').filter(Boolean).map((s) => (PAGE_WORDS.has(s) ? s : '<ad>')).join('/') + (p.length > 1 && p.endsWith('/') ? '/' : '');
   function maskQuery(search) {
     const out = {};
     new URLSearchParams(search).forEach((val, key) => {
@@ -74,7 +78,7 @@
   function record(method, url, body, status, ctype, text) {
     const u = relevant(url);
     if (!u || records.length >= MAX) return;
-    const r = { no: records.length + 1, zaman: new Date().toLocaleTimeString('tr-TR'), sayfa: maskPath(location.pathname), yontem: method, adres: maskPath(u.pathname), sorgu: maskQuery(u.search), durum: status, tur: (ctype || '').split(';')[0] };
+    const r = { no: records.length + 1, zaman: new Date().toLocaleTimeString('tr-TR'), sayfa: maskPage(location.pathname), yontem: method, adres: maskPath(u.pathname), sorgu: maskQuery(u.search), durum: status, tur: (ctype || '').split(';')[0] };
     const p = bodyParams(body);
     if (p) {
       r.govde_alanlari = [...new Set([...p.keys()])].filter((k) => !SECRET.test(k));

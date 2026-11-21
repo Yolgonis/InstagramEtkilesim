@@ -47,6 +47,7 @@ Telefonda çalışmaz, çünkü mobil tarayıcılarda konsol yok.
 ## Sonuçları doğru okumak
 
 - **Hesabında hiç gönderi yoksa** herkes 0 etkileşimle görünür. Bu, kimsenin etkileşime girmediği anlamına gelmez, sadece ölçülecek bir şey olmadığı anlamına gelir. Bu durumda kimseyi çıkarma.
+- Özette kırmızı **"⚠ … gönderinin verisi eksik"** uyarısı varsa bazı beğeni ya da yorum listeleri tam alınamamıştır. Etkileşimi 0 görünen kişiler aslında etkileşime girmiş olabilir. Bu durumda toplu seçim kapalıdır. Taramayı daha sonra tekrar çalıştır, eksikler yeniden denenir.
 - Günlükte `✖ Gönderiler alınamadı` görürsen beğeni ve yorumlar o taramada sayılmamıştır, sonuçlara güvenme. Gönderin olduğu halde bu uyarıyı görüyorsan lütfen [bir hata kaydı aç](https://github.com/Yolgonis/InstagramEtkilesim/issues).
 - **"yeni"** etiketli kişiler seni yakın zamanda takip etmiş olabilir, henüz etkileşime girme fırsatları olmamış olabilir.
 - Takipçi sayın Instagram'da gösterilenden bir iki kişi az çıkabilir. Hesabını dondurmuş ya da kısıtlanmış kişiler listede yer almaz.

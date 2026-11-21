@@ -1,5 +1,14 @@
 # Değişiklikler
 
+## 0.7.1 (2026-11-21)
+
+- **Eksik veri artık "etkileşim yok" sayılmıyor.** Her gönderi için beğeni ve yorum listesinin tam mı, kısmi mi alındığı, yoksa hiç alınamadığı tutuluyor. Eksik veri varsa özette kırmızı uyarı çıkıyor ve "Hiç etkileşim yok" sayısının yanında "kesin değil" yazıyor. Az etkileşimli kişiler için **Görünenleri seç** kapanıyor, çıkarma onayına da uyarı ekleniyor.
+- Beğeni ve yorumlar birbirinden bağımsız alınıyor. Beğenen listesi hata verince aynı gönderinin yorumları artık atlanmıyor.
+- Tam alınamayan listeler bir sonraki taramada yeniden deneniyor. Gönderide görünen ilk beğenenlerden oluşan yedek liste "kısmi" sayılıyor.
+- Yorumlarda sayfa sınırına takılma, tekrar eden sayfa ve önizlemede görünmeyen yanıtlar "kısmi" olarak işaretleniyor.
+- Instagram beklenmeyen biçimde cevap verirse liste boş kabul edilmiyor, "alınamadı" sayılıyor.
+- Ağ kaydedici v1.2: sayfa adresindeki kullanıcı adları ve gönderi kodları kayda girmiyor.
+
 ## 0.7.0 (2026-11-21)
 
 - **Hikâye izleyenleri şimdilik kapalı.** Instagram eski hikâye adreslerini kapattı ve yerine geçen yol henüz bilinmiyor. Etkileşim artık yalnızca beğeni ve yorumlardan hesaplanıyor. Ayarlardaki hikâye seçeneği, özetteki ve kartlardaki 👁 sayıları kaldırıldı. Daha önce kaydedilmiş hikâye verisi silinmedi ama sayılmıyor.
